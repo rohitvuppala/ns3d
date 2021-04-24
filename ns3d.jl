@@ -86,14 +86,14 @@ function init_3d(Ma,γ,x,y,z,nx,ny,nz)
 end
 
 #Calculate time step
-function calc_dt(cfl,γ,pq,nx,ny,nz,dx,dy,dz)
+function calc_dt(cfl,γ,q,nx,ny,nz,dx,dy,dz)
     a = 0.0
     a = maximum([a,0.0])
     for k in 0:nz
         for j in 0:ny
             for i in 0:nx
-                ρ,u,v,w,p,e = pq[:,i,j,k]
-
+                ρ,ρu,ρv,ρw,ρe = q[:,i,j,k]
+                u,v,w,e       = ρu/ρ, ρv/ρ, ρw/ρ, ρe/ρ
                 c = sqrt(γ*p/ρ)
                 a = maximum([a,abs(u),abs(u+c),abs(u-c)
                              ,abs(v),abs(v+c),abs(v-c)
@@ -103,31 +103,52 @@ function calc_dt(cfl,γ,pq,nx,ny,nz,dx,dy,dz)
         end
     end
 
-    dt = cfl* maximum([dx,dy,dz])/a  
+    dt = cfl* minimum([dx,dy,dz])/a
 
     return dt
 end
 
+function expbc!(q,nx,ny,nz)
+    #Periodic Boundary Conditions
+    # In x-direction
+    q[:,-1,:,:]   = q[:,nx,:,:]
+    q[:,-2,:,:]   = q[:,nx-1,:,:]
+    q[:,nx+1,:,:] = q[:,0,:,:]
+    q[:,nx+2,:,:] = q[:,1,:,:]
+
+    # In y-direction
+    q[:,:,-1,:]   = q[:,ny,:,:]
+    q[:,:,-2,:]   = q[:,ny-1,:,:]
+    q[:,:,ny+1,:] = q[:,0,:,:]
+    q[:,:,ny+2,:] = q[:,1,:,:]
+
+    # In z-direction
+    q[:,:,:,-1]   = q[:,:,:,nz]
+    q[:,:,:,-2]   = q[:,:,:,nz-1]
+    q[:,:,:,nz+1] = q[:,:,:,0]
+    q[:,:,:,nz+2] = q[:,:,:,1]
+
+end
 
 #Create a function for the ns3d run
-function ns3d(nx=32,ny=32,nz=32)
+function ns3d(cfl=0.5,nx=32,ny=32,nz=32)
 
     #Setup required
     Ma = 0.08
     γ  = 1.4
-    cfl= 1.0
     time = 0.0
 
     #Create the grid
     x,y,z,dx,dy,dz = grid_init(nx,ny,nz)
 
     #Initialise
-    q,pq = init_3d(Ma,γ,x,y,z,nx,ny,nz)
+    q,pq_init = init_3d(Ma,γ,x,y,z,nx,ny,nz)
 
     #Calc_dt
-    dt = calc_dt(cfl,γ,pq,nx,ny,nz,dx,dy,dz)
+    dt = calc_dt(cfl,γ,q,nx,ny,nz,dx,dy,dz)
 
     #Boundary Conditions
+    expbc!(q,nx,ny,nz)
 
-    return dt
+    return q
 end
