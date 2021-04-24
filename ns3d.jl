@@ -33,7 +33,7 @@ function grid_init(nx,ny,nz)
         end
     end
 
-    return x,y,z
+    return x,y,z,dx,dy,dz
 end
 
 #Initialise
@@ -85,18 +85,49 @@ function init_3d(Ma,γ,x,y,z,nx,ny,nz)
     return q,pq
 end
 
+#Calculate time step
+function calc_dt(cfl,γ,pq,nx,ny,nz,dx,dy,dz)
+    a = 0.0
+    a = maximum([a,0.0])
+    for k in 0:nz
+        for j in 0:ny
+            for i in 0:nx
+                ρ,u,v,w,p,e = pq[:,i,j,k]
+
+                c = sqrt(γ*p/ρ)
+                a = maximum([a,abs(u),abs(u+c),abs(u-c)
+                             ,abs(v),abs(v+c),abs(v-c)
+                             ,abs(w),abs(w+c),abs(w-c)])
+
+            end
+        end
+    end
+
+    dt = cfl* maximum([dx,dy,dz])/a  
+
+    return dt
+end
+
+
 #Create a function for the ns3d run
 function ns3d(nx=32,ny=32,nz=32)
 
     #Setup required
-    Ma= 0.08
-    γ = 1.4
+    Ma = 0.08
+    γ  = 1.4
+    cfl= 1.0
+    time = 0.0
 
     #Create the grid
-    x,y,z = grid_init(nx,ny,nz)
+    x,y,z,dx,dy,dz = grid_init(nx,ny,nz)
 
     #Initialise
     q,pq = init_3d(Ma,γ,x,y,z,nx,ny,nz)
 
-    return q
+    #Calc_dt
+    dt = calc_dt(cfl,γ,pq,nx,ny,nz,dx,dy,dz)
+
+    #Boundary Conditions
+
+    return dt
 end
