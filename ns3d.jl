@@ -1,6 +1,12 @@
 #Import useful stuff
 using Plots
 using OffsetArrays
+using WriteVTK
+
+module consts
+    γ = 1.4
+    Ma= 0.08
+end
 
 #Create the grid
 function grid_init(nx,ny,nz)
@@ -94,6 +100,7 @@ function calc_dt(cfl,γ,q,nx,ny,nz,dx,dy,dz)
             for i in 0:nx
                 ρ,ρu,ρv,ρw,ρe = q[:,i,j,k]
                 u,v,w,e       = ρu/ρ, ρv/ρ, ρw/ρ, ρe/ρ
+                p = ρ*(γ-1)*(e-0.5*(u^2+v^2+w^2))
                 c = sqrt(γ*p/ρ)
                 a = maximum([a,abs(u),abs(u+c),abs(u-c)
                              ,abs(v),abs(v+c),abs(v-c)
@@ -130,6 +137,27 @@ function expbc!(q,nx,ny,nz)
 
 end
 
+#Create function for writing output
+function output_data(q,x,y,z,nx,ny,nz)
+    γ = consts.γ
+    ρ = q[1,0:nx,0:ny,0:nz]
+    u = q[2,0:nx,0:ny,0:nz]./ρ
+    v = q[3,0:nx,0:ny,0:nz]./ρ
+    w = q[4,0:nx,0:ny,0:nz]./ρ
+    e = q[5,0:nx,0:ny,0:nz]./ρ
+    p = ρ.*(γ-1).*(e-0.5.*(u.^2+v.^2+w.^2))
+    c = sqrt.(γ.*p./ρ)
+
+    vtkfile = vtk_grid("output",x[0:nx,0:ny,0:nz],y[0:nx,0:ny,0:nz],z[0:nx,0:ny,0:nz])
+    vtkfile["Velocity"] = (u,v,w)
+    vtkfile["Density" ] = ρ
+    vtkfile["Pressure"] = p
+    vtkfile["Speed of Sound"] = c
+
+    vtk_save(vtkfile)
+    return nothing
+end
+
 #Create a function for the ns3d run
 function ns3d(cfl=0.5,nx=32,ny=32,nz=32)
 
@@ -150,5 +178,8 @@ function ns3d(cfl=0.5,nx=32,ny=32,nz=32)
     #Boundary Conditions
     expbc!(q,nx,ny,nz)
 
-    return q
+    #Output data
+    output_data(q,x,y,z,nx,ny,nz)
+
+    return nothing
 end
