@@ -117,6 +117,74 @@ function calc_dt(cfl,γ,q,nx,ny,nz,dx,dy,dz)
     return dt
 end
 
+function weno5(nx,ny,nz,q)
+	#qL and qR
+	qL = OffsetArray(zeros(5,nx+7,ny+7,nz+7),1:5,-3:nx+3,-3:ny+3,-3:nz+3)
+	qR = OffsetArray(zeros(5,nx+7,ny+7,nz+7),1:5,-3:nx+3,-3:ny+3,-3:nz+3)
+
+	eps  = 1e-6
+	pweno= 2
+
+	c0 = 1/6
+	c1 = 13/12
+	c2 = 1/4
+
+	d0 = 1/10
+	d1 = 3/5
+	d2 = 3/10
+
+	#Compute smoothness
+	β0 = OffsetArray(zeros(5,nx+7),1:5,-3:nx+3)
+	β1 = OffsetArray(zeros(5,nx+7),1:5,-3:nx+3)
+	β2 = OffsetArray(zeros(5,nx+7),1:5,-3:nx+3)
+
+	for i in 0:nx
+		β0[:,i] = c1*(q[:,i-2]-2*q[:,i-1]+q[:,i]).^2
+		        + c2*(q[:,i-2]-4*q[:,i-1]+3*q[:,i]).^2
+		β1[:,i] = c1*(q[:,i-1]-2*q[:,i]+q[:,i+1]).^2
+		        + c2*(q[:,i-1]-q[:,i+1]).^2
+		β2[:,i] = c1*(q[:,i]-2*q[:,i+1]+q[:,i+2]).^2
+		        + c2*(3*q[:,i]-4*q[:,i+1]+q[:,i+2]).^2
+	end
+
+	for i in 0:nx-1
+		#Positive reconstruction
+		α0 = d0./(β0[:,i].+eps).^pweno
+		α1 = d1./(β1[:,i].+eps).^pweno
+		α2 = d2./(β2[:,i].+eps).^pweno
+
+		w0 = α0./(α0+α1+α2)
+		w1 = α1./(α0+α1+α2)
+		w2 = α2./(α0+α1+α2)
+
+		q0 = c0.*(2.0.*q[:,i-2].-7.0.*q[:,i-1].+11.0.*q[:,i])
+		q1 = c0.*(-q[:,i-1]+5.0.*q[:,i].+2.0.*q[:,i+1])
+		q2 = c0.*(2.0.*q[:,i].+5.0.*q[:,i+1].-q[:,i+2])
+
+		qL[:,i] = w0.*q0 + w1.*q1 + w2.*q2
+		#@info qL[:,i]
+
+		#Negative reconstruction
+		α0 = d0./(β2[:,i+1].+eps).^pweno
+		α1 = d1./(β1[:,i+1].+eps).^pweno
+		α2 = d2./(β0[:,i+1].+eps).^pweno
+
+		w0 = α0./(α0+α1+α2)
+		w1 = α1./(α0+α1+α2)
+		w2 = α2./(α0+α1+α2)
+
+		q0 = c0.*(2.0.*q[:,i+3].-7.0.*q[:,i+2].+11.0.*q[:,i+1])
+		q1 = c0.*(-q[:,i+2].+5.0.*q[:,i+1].+2.0.*q[:,i])
+		q2 = c0.*(2.0.*q[:,i+1].+5.0.*q[:,i].-q[:,i-1])
+
+		qR[:,i] = w0.*q0 + w1.*q1 + w2.*q2
+
+	end
+
+	return qL,qR
+end
+
+#Boundary Conditions
 function expbc!(q,nx,ny,nz)
     #Periodic Boundary Conditions
     # In x-direction
