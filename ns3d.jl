@@ -8,6 +8,8 @@ module consts
     Ma= 0.08
 end
 
+using consts
+
 #Create the grid
 function grid_init(nx,ny,nz)
     #Intialise the grid
@@ -19,19 +21,19 @@ function grid_init(nx,ny,nz)
     dy = ly/ny
     dz = lz/nz
 
-    x = zeros(nx+5,ny+5,nz+5)
-    y = zeros(nx+5,ny+5,nz+5)
-    z = zeros(nx+5,ny+5,nz+5)
+    x = zeros(nx+7,ny+7,nz+7)
+    y = zeros(nx+7,ny+7,nz+7)
+    z = zeros(nx+7,ny+7,nz+7)
 
     #Offset arrays to reflect ghost points
-    x = OffsetArray(x,-2:nx+2,-2:ny+2,-2:nz+2)
-    y = OffsetArray(y,-2:nx+2,-2:ny+2,-2:nz+2)
-    z = OffsetArray(z,-2:nx+2,-2:ny+2,-2:nz+2)
+    x = OffsetArray(x,-3:nx+3,-3:ny+3,-3:nz+3)
+    y = OffsetArray(y,-3:nx+3,-3:ny+3,-3:nz+3)
+    z = OffsetArray(z,-3:nx+3,-3:ny+3,-3:nz+3)
 
     #Set the values for x,y,z and create grid
-    for k in -2:nz+2
-        for j in -2:ny+2
-            for i in -2:nx+2
+    for k in -3:nz+3
+        for j in -3:ny+3
+            for i in -3:nx+3
                 x[i,j,k] = 0.0 + dx*i
                 y[i,j,k] = 0.0 + dy*j
                 z[i,j,k] = 0.0 + dz*k
@@ -43,15 +45,17 @@ function grid_init(nx,ny,nz)
 end
 
 #Initialise
-function init_3d(Ma,γ,x,y,z,nx,ny,nz)
+function init_3d(Ma,x,y,z,nx,ny,nz)
+
+    γ = consts.γ
 
     # To store cons ρ,ρu,ρv,ρw,ρe
-    q = zeros(5,nx+5,ny+5,nz+5)
-    q = OffsetArray(q,1:5,-2:nx+2,-2:ny+2,-2:nz+2)
+    q = zeros(5,nx+7,ny+7,nz+7)
+    q = OffsetArray(q,1:5,-3:nx+3,-3:ny+3,-3:nz+3)
 
     # To store ρ,u,v,w,p,e
-    pq= zeros(6,nx+5,ny+5,nz+5)
-    pq= OffsetArray(pq,1:6,-2:nx+2,-2:ny+2,-2:nz+2)
+    pq= zeros(6,nx+7,ny+7,nz+7)
+    pq= OffsetArray(pq,1:6,-3:nx+3,-3:ny+3,-3:nz+3)
 
     #Temp arrays
     cons = zeros(5)
@@ -120,20 +124,26 @@ function expbc!(q,nx,ny,nz)
     # In x-direction
     q[:,-1,:,:]   = q[:,nx,:,:]
     q[:,-2,:,:]   = q[:,nx-1,:,:]
+    q[:,-3,:,:]   = q[:,nx-2,:,:]
     q[:,nx+1,:,:] = q[:,0,:,:]
     q[:,nx+2,:,:] = q[:,1,:,:]
+    q[:,nx+3,:,:] = q[:,2,:,:]
 
     # In y-direction
     q[:,:,-1,:]   = q[:,ny,:,:]
     q[:,:,-2,:]   = q[:,ny-1,:,:]
+    q[:,:,-3,:]   = q[:,ny-2,:,:]
     q[:,:,ny+1,:] = q[:,0,:,:]
     q[:,:,ny+2,:] = q[:,1,:,:]
+    q[:,:,ny+3,:] = q[:,2,:,:]
 
     # In z-direction
     q[:,:,:,-1]   = q[:,:,:,nz]
     q[:,:,:,-2]   = q[:,:,:,nz-1]
+    q[:,:,:,-3]   = q[:,:,:,nz-2]
     q[:,:,:,nz+1] = q[:,:,:,0]
     q[:,:,:,nz+2] = q[:,:,:,1]
+    q[:,:,:,nz+3] = q[:,:,:,2]
 
 end
 
@@ -162,8 +172,8 @@ end
 function ns3d(cfl=0.5,nx=32,ny=32,nz=32)
 
     #Setup required
+    γ  = consts.γ
     Ma = 0.08
-    γ  = 1.4
     time = 0.0
 
     #Create the grid
