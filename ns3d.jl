@@ -19,19 +19,19 @@ function grid_init(nx,ny,nz)
     dy = ly/ny
     dz = lz/nz
 
-    x = zeros(nx+5,ny+5,nz+5)
-    y = zeros(nx+5,ny+5,nz+5)
-    z = zeros(nx+5,ny+5,nz+5)
+    x = zeros(nx+7,ny+7,nz+7)
+    y = zeros(nx+7,ny+7,nz+7)
+    z = zeros(nx+7,ny+7,nz+7)
 
     #Offset arrays to reflect ghost points
-    x = OffsetArray(x,-2:nx+2,-2:ny+2,-2:nz+2)
-    y = OffsetArray(y,-2:nx+2,-2:ny+2,-2:nz+2)
-    z = OffsetArray(z,-2:nx+2,-2:ny+2,-2:nz+2)
+    x = OffsetArray(x,-3:nx+3,-3:ny+3,-3:nz+3)
+    y = OffsetArray(y,-3:nx+3,-3:ny+3,-3:nz+3)
+    z = OffsetArray(z,-3:nx+3,-3:ny+3,-3:nz+3)
 
     #Set the values for x,y,z and create grid
-    for k in -2:nz+2
-        for j in -2:ny+2
-            for i in -2:nx+2
+    for k in -3:nz+3
+        for j in -3:ny+3
+            for i in -3:nx+3
                 x[i,j,k] = 0.0 + dx*i
                 y[i,j,k] = 0.0 + dy*j
                 z[i,j,k] = 0.0 + dz*k
@@ -43,15 +43,17 @@ function grid_init(nx,ny,nz)
 end
 
 #Initialise
-function init_3d(Ma,γ,x,y,z,nx,ny,nz)
+function init_3d(Ma,x,y,z,nx,ny,nz)
+
+    γ = consts.γ
 
     # To store cons ρ,ρu,ρv,ρw,ρe
-    q = zeros(5,nx+5,ny+5,nz+5)
-    q = OffsetArray(q,1:5,-2:nx+2,-2:ny+2,-2:nz+2)
+    q = zeros(5,nx+7,ny+7,nz+7)
+    q = OffsetArray(q,1:5,-3:nx+3,-3:ny+3,-3:nz+3)
 
     # To store ρ,u,v,w,p,e
-    pq= zeros(6,nx+5,ny+5,nz+5)
-    pq= OffsetArray(pq,1:6,-2:nx+2,-2:ny+2,-2:nz+2)
+    pq= zeros(6,nx+7,ny+7,nz+7)
+    pq= OffsetArray(pq,1:6,-3:nx+3,-3:ny+3,-3:nz+3)
 
     #Temp arrays
     cons = zeros(5)
@@ -115,25 +117,32 @@ function calc_dt(cfl,γ,q,nx,ny,nz,dx,dy,dz)
     return dt
 end
 
+#Boundary Conditions
 function expbc!(q,nx,ny,nz)
     #Periodic Boundary Conditions
     # In x-direction
     q[:,-1,:,:]   = q[:,nx,:,:]
     q[:,-2,:,:]   = q[:,nx-1,:,:]
+    q[:,-3,:,:]   = q[:,nx-2,:,:]
     q[:,nx+1,:,:] = q[:,0,:,:]
     q[:,nx+2,:,:] = q[:,1,:,:]
+    q[:,nx+3,:,:] = q[:,2,:,:]
 
     # In y-direction
     q[:,:,-1,:]   = q[:,ny,:,:]
     q[:,:,-2,:]   = q[:,ny-1,:,:]
+    q[:,:,-3,:]   = q[:,ny-2,:,:]
     q[:,:,ny+1,:] = q[:,0,:,:]
     q[:,:,ny+2,:] = q[:,1,:,:]
+    q[:,:,ny+3,:] = q[:,2,:,:]
 
     # In z-direction
     q[:,:,:,-1]   = q[:,:,:,nz]
     q[:,:,:,-2]   = q[:,:,:,nz-1]
+    q[:,:,:,-3]   = q[:,:,:,nz-2]
     q[:,:,:,nz+1] = q[:,:,:,0]
     q[:,:,:,nz+2] = q[:,:,:,1]
+    q[:,:,:,nz+3] = q[:,:,:,2]
 
 end
 
@@ -159,18 +168,20 @@ function output_data(q,x,y,z,nx,ny,nz)
 end
 
 #Create a function for the ns3d run
-function ns3d(cfl=0.5,nx=32,ny=32,nz=32)
+function ns3d(cfl=0.5,nx=32,ny=32,nz=32,nitermax=10000,tend=1.0)
 
     #Setup required
+    γ  = consts.γ
     Ma = 0.08
-    γ  = 1.4
     time = 0.0
 
     #Create the grid
     x,y,z,dx,dy,dz = grid_init(nx,ny,nz)
 
     #Initialise
-    q,pq_init = init_3d(Ma,γ,x,y,z,nx,ny,nz)
+    q,pq_init = init_3d(Ma,x,y,z,nx,ny,nz)
+    qnew = zeros(5,nx+7,ny+7,nz+7)
+    qnew = OffsetArray(q,1:5,-3:nx+3,-3:ny+3,-3:nz+3)
 
     #Calc_dt
     dt = calc_dt(cfl,γ,q,nx,ny,nz,dx,dy,dz)
@@ -178,8 +189,123 @@ function ns3d(cfl=0.5,nx=32,ny=32,nz=32)
     #Boundary Conditions
     expbc!(q,nx,ny,nz)
 
+    for niter in 1:nitermax
+        dt = calc_dt(cfl,γ,q,nx,ny,nz,dx,dy,dz)
+        if time+dt > tend
+            dt = tend-time
+        end
+
+        expbc!(q,nx,ny,nz)
+
+        qnew = tvdrk3(nx,ny,nz,dx,dy,dz,q,dt)
+
+        expbc!(qnew,nx,ny,nz)
+
+        q = copy(qnew)
+        time = time + dt
+
+        @info niter,time,dt
+        if (time >= tend)
+            break
+        end
+    end
+
+
     #Output data
     output_data(q,x,y,z,nx,ny,nz)
 
     return nothing
+end
+
+#Flux calculation
+function flux(nx,ny,nz,q)
+    F = OffsetArray(zeros(5,nx+7,ny+7,nz+7),1:5,-2:nx+2,-2:ny+2,-2:nz+2)
+
+    γ = 1.4
+    ρ = q[1,:]
+    u = q[2,:]./ρ
+    v = q[3,:]./ρ
+    w = q[4,:]./ρ
+    e = q[5,:]./ρ
+    p = (γ-1)*(q[5,:] - 0.5*ρ.*(u.^2+v.^2+w.^2))
+
+    F[1,:] = ρ.*u
+    F[2,:] = ρ.* (u.^2) + p
+    F[3,:] = u.* (ρ.*e + p)
+
+    return F
+end
+
+#RHS calculation
+function rhs(nx,ny,nz,dx,dy,dz,q)
+
+    r = OffsetArray(zeros(3,nx+5),1:3,-2:nx+2)
+
+    qL,qR = weno5(nx,q)
+    FL = flux(nx,qL)
+    FR = flux(nx,qR)
+
+    cs = cs_weno(q,nx)
+
+    #Compute flux with Rusanov
+    F = OffsetArray(zeros(3,nx+5),1:3,-2:nx+2)
+
+    for i in 0:nx-1
+        F[:,i] = 0.5*(FL[:,i]+FR[:,i]) + 0.5*cs[i]*(qL[:,i]-qR[:,i])
+    end
+
+    for i in 1:nx-1
+        r[:,i] = -(F[:,i]-F[:,i-1])./dx
+    end
+
+    return r
+end
+
+#Propagation speed calculation
+function cs_weno(q,nx,ny,nz)
+    γ = 1.4
+    ρ = q[1,:]
+    u = q[2,:]./ρ
+    e = q[3,:]./ρ
+    p = (γ-1)*(q[3,:] - 0.5*(ρ.*u.^2))
+
+    a  = sqrt.(γ*p./ρ)
+
+    cs = OffsetArray(zeros(nx+1),0:nx)
+    r  = OffsetArray(zeros(nx+5),-2:nx+2)
+
+    for i in -2:nx+2
+        r[i] = maximum([abs(u[i]),abs(u[i]-a[i]),abs(u[i]+a[i])])
+    end
+    for i in 0:nx-1
+        cs[i] = maximum([abs(r[i-2]),abs(r[i-1]),abs(r[i]),
+                         abs(r[i+1]),abs(r[i+2]),abs(r[i+3])])
+    end
+    return cs
+end
+
+#Time stepping RK3
+function tvdrk3(nx,ny,nz,dx,dy,dz,q,dt)
+    qq = copy(q)
+    qn = copy(q)
+
+    #First step
+    r = rhs(nx,dx,q)
+    for i in 1:nx-1
+        qq[:,i] = q[:,i] + dt*r[:,i]
+    end
+
+    #Second step
+    r = rhs(nx,dx,qq)
+    for i in 1:nx-1
+        qq[:,i] = 0.75*q[:,i] + 0.25*qq[:,i] + 0.25*dt*r[:,i]
+    end
+
+    #Third Step
+    r = rhs(nx,dx,qq)
+    for i in 1:nx-1
+        qn[:,i] = 1/3*q[:,i] + 2/3*qq[:,i] + 2/3*dt*r[:,i]
+    end
+
+    return qn
 end
