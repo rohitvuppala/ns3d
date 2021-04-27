@@ -117,73 +117,6 @@ function calc_dt(cfl,γ,q,nx,ny,nz,dx,dy,dz)
     return dt
 end
 
-function weno5(nx,ny,nz,q)
-	#qL and qR
-	qL = OffsetArray(zeros(5,nx+7,ny+7,nz+7),1:5,-3:nx+3,-3:ny+3,-3:nz+3)
-	qR = OffsetArray(zeros(5,nx+7,ny+7,nz+7),1:5,-3:nx+3,-3:ny+3,-3:nz+3)
-
-	eps  = 1e-6
-	pweno= 2
-
-	c0 = 1/6
-	c1 = 13/12
-	c2 = 1/4
-
-	d0 = 1/10
-	d1 = 3/5
-	d2 = 3/10
-
-	#Compute smoothness
-	β0 = OffsetArray(zeros(5,nx+7),1:5,-3:nx+3)
-	β1 = OffsetArray(zeros(5,nx+7),1:5,-3:nx+3)
-	β2 = OffsetArray(zeros(5,nx+7),1:5,-3:nx+3)
-
-	for i in 0:nx
-		β0[:,i] = c1*(q[:,i-2]-2*q[:,i-1]+q[:,i]).^2
-		        + c2*(q[:,i-2]-4*q[:,i-1]+3*q[:,i]).^2
-		β1[:,i] = c1*(q[:,i-1]-2*q[:,i]+q[:,i+1]).^2
-		        + c2*(q[:,i-1]-q[:,i+1]).^2
-		β2[:,i] = c1*(q[:,i]-2*q[:,i+1]+q[:,i+2]).^2
-		        + c2*(3*q[:,i]-4*q[:,i+1]+q[:,i+2]).^2
-	end
-
-	for i in 0:nx-1
-		#Positive reconstruction
-		α0 = d0./(β0[:,i].+eps).^pweno
-		α1 = d1./(β1[:,i].+eps).^pweno
-		α2 = d2./(β2[:,i].+eps).^pweno
-
-		w0 = α0./(α0+α1+α2)
-		w1 = α1./(α0+α1+α2)
-		w2 = α2./(α0+α1+α2)
-
-		q0 = c0.*(2.0.*q[:,i-2].-7.0.*q[:,i-1].+11.0.*q[:,i])
-		q1 = c0.*(-q[:,i-1]+5.0.*q[:,i].+2.0.*q[:,i+1])
-		q2 = c0.*(2.0.*q[:,i].+5.0.*q[:,i+1].-q[:,i+2])
-
-		qL[:,i] = w0.*q0 + w1.*q1 + w2.*q2
-		#@info qL[:,i]
-
-		#Negative reconstruction
-		α0 = d0./(β2[:,i+1].+eps).^pweno
-		α1 = d1./(β1[:,i+1].+eps).^pweno
-		α2 = d2./(β0[:,i+1].+eps).^pweno
-
-		w0 = α0./(α0+α1+α2)
-		w1 = α1./(α0+α1+α2)
-		w2 = α2./(α0+α1+α2)
-
-		q0 = c0.*(2.0.*q[:,i+3].-7.0.*q[:,i+2].+11.0.*q[:,i+1])
-		q1 = c0.*(-q[:,i+2].+5.0.*q[:,i+1].+2.0.*q[:,i])
-		q2 = c0.*(2.0.*q[:,i+1].+5.0.*q[:,i].-q[:,i-1])
-
-		qR[:,i] = w0.*q0 + w1.*q1 + w2.*q2
-
-	end
-
-	return qL,qR
-end
-
 #Boundary Conditions
 function expbc!(q,nx,ny,nz)
     #Periodic Boundary Conditions
@@ -235,7 +168,7 @@ function output_data(q,x,y,z,nx,ny,nz)
 end
 
 #Create a function for the ns3d run
-function ns3d(cfl=0.5,nx=32,ny=32,nz=32)
+function ns3d(cfl=0.5,nx=32,ny=32,nz=32,nitermax=10000,tend=1.0)
 
     #Setup required
     γ  = consts.γ
@@ -247,6 +180,8 @@ function ns3d(cfl=0.5,nx=32,ny=32,nz=32)
 
     #Initialise
     q,pq_init = init_3d(Ma,x,y,z,nx,ny,nz)
+    qnew = zeros(5,nx+7,ny+7,nz+7)
+    qnew = OffsetArray(q,1:5,-3:nx+3,-3:ny+3,-3:nz+3)
 
     #Calc_dt
     dt = calc_dt(cfl,γ,q,nx,ny,nz,dx,dy,dz)
@@ -254,8 +189,123 @@ function ns3d(cfl=0.5,nx=32,ny=32,nz=32)
     #Boundary Conditions
     expbc!(q,nx,ny,nz)
 
+    for niter in 1:nitermax
+        dt = calc_dt(cfl,γ,q,nx,ny,nz,dx,dy,dz)
+        if time+dt > tend
+            dt = tend-time
+        end
+
+        expbc!(q,nx,ny,nz)
+
+        qnew = tvdrk3(nx,ny,nz,dx,dy,dz,q,dt)
+
+        expbc!(qnew,nx,ny,nz)
+
+        q = copy(qnew)
+        time = time + dt
+
+        @info niter,time,dt
+        if (time >= tend)
+            break
+        end
+    end
+
+
     #Output data
     output_data(q,x,y,z,nx,ny,nz)
 
     return nothing
+end
+
+#Flux calculation
+function flux(nx,ny,nz,q)
+    F = OffsetArray(zeros(5,nx+7,ny+7,nz+7),1:5,-2:nx+2,-2:ny+2,-2:nz+2)
+
+    γ = 1.4
+    ρ = q[1,:]
+    u = q[2,:]./ρ
+    v = q[3,:]./ρ
+    w = q[4,:]./ρ
+    e = q[5,:]./ρ
+    p = (γ-1)*(q[5,:] - 0.5*ρ.*(u.^2+v.^2+w.^2))
+
+    F[1,:] = ρ.*u
+    F[2,:] = ρ.* (u.^2) + p
+    F[3,:] = u.* (ρ.*e + p)
+
+    return F
+end
+
+#RHS calculation
+function rhs(nx,ny,nz,dx,dy,dz,q)
+
+    r = OffsetArray(zeros(3,nx+5),1:3,-2:nx+2)
+
+    qL,qR = weno5(nx,q)
+    FL = flux(nx,qL)
+    FR = flux(nx,qR)
+
+    cs = cs_weno(q,nx)
+
+    #Compute flux with Rusanov
+    F = OffsetArray(zeros(3,nx+5),1:3,-2:nx+2)
+
+    for i in 0:nx-1
+        F[:,i] = 0.5*(FL[:,i]+FR[:,i]) + 0.5*cs[i]*(qL[:,i]-qR[:,i])
+    end
+
+    for i in 1:nx-1
+        r[:,i] = -(F[:,i]-F[:,i-1])./dx
+    end
+
+    return r
+end
+
+#Propagation speed calculation
+function cs_weno(q,nx,ny,nz)
+    γ = 1.4
+    ρ = q[1,:]
+    u = q[2,:]./ρ
+    e = q[3,:]./ρ
+    p = (γ-1)*(q[3,:] - 0.5*(ρ.*u.^2))
+
+    a  = sqrt.(γ*p./ρ)
+
+    cs = OffsetArray(zeros(nx+1),0:nx)
+    r  = OffsetArray(zeros(nx+5),-2:nx+2)
+
+    for i in -2:nx+2
+        r[i] = maximum([abs(u[i]),abs(u[i]-a[i]),abs(u[i]+a[i])])
+    end
+    for i in 0:nx-1
+        cs[i] = maximum([abs(r[i-2]),abs(r[i-1]),abs(r[i]),
+                         abs(r[i+1]),abs(r[i+2]),abs(r[i+3])])
+    end
+    return cs
+end
+
+#Time stepping RK3
+function tvdrk3(nx,ny,nz,dx,dy,dz,q,dt)
+    qq = copy(q)
+    qn = copy(q)
+
+    #First step
+    r = rhs(nx,dx,q)
+    for i in 1:nx-1
+        qq[:,i] = q[:,i] + dt*r[:,i]
+    end
+
+    #Second step
+    r = rhs(nx,dx,qq)
+    for i in 1:nx-1
+        qq[:,i] = 0.75*q[:,i] + 0.25*qq[:,i] + 0.25*dt*r[:,i]
+    end
+
+    #Third Step
+    r = rhs(nx,dx,qq)
+    for i in 1:nx-1
+        qn[:,i] = 1/3*q[:,i] + 2/3*qq[:,i] + 2/3*dt*r[:,i]
+    end
+
+    return qn
 end
