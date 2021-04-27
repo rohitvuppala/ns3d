@@ -8,8 +8,6 @@ module consts
     Ma= 0.08
 end
 
-using consts
-
 #Create the grid
 function grid_init(nx,ny,nz)
     #Intialise the grid
@@ -180,7 +178,7 @@ function ns3d(cfl=0.5,nx=32,ny=32,nz=32)
     x,y,z,dx,dy,dz = grid_init(nx,ny,nz)
 
     #Initialise
-    q,pq_init = init_3d(Ma,γ,x,y,z,nx,ny,nz)
+    q,pq_init = init_3d(Ma,x,y,z,nx,ny,nz)
 
     #Calc_dt
     dt = calc_dt(cfl,γ,q,nx,ny,nz,dx,dy,dz)
