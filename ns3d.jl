@@ -6,6 +6,18 @@ using WriteVTK
 module consts
     γ = 1.4
     Ma= 0.08
+    function calc_nu(T,iflag=1)
+    if (iflag==1)
+        Tref = 300
+        νref = 1.716e-5
+        S    = 110.4
+        ν    = νref*(T.^1.5)/(Tref^1.5)*(Tref+S)./(T.+S)
+        return ν
+    elseif (iflag==2)
+        Re = T
+        ν  = 1.0/Re
+    end
+    end
 end
 
 #Create the grid
@@ -457,6 +469,13 @@ function rhsInv(nx,ny,nz,dx,dy,dz,q)
     return r
 end
 
+#Function to calc Viscous Flux
+function rhsVis(nx,ny,nz,dx,dy,dz,q)
+
+
+    return r
+end
+
 #RHS
 function rhs(nx,ny,nz,dx,dy,dz,q)
     ri = rhsInv(nx,ny,nz,dx,dy,dz,q)
@@ -498,6 +517,7 @@ function calc_tke(q,nx,ny,nz)
     tke = sum(0.5*(u.^2 + v.^2 + w.^2))/((nx+1)*(ny+1)*(nz+1))
     return tke
 end
+
 
 #Create a function for the ns3d run
 function ns3d(cfl=0.5,nx=16,ny=16,nz=16,nitermax=10000,tend=1.0)
@@ -566,5 +586,3 @@ tke,dEdt,tlist = ns3d(0.5,16,16,16,1000000,20.0)
 
 p1 = plot(tlist,tke)
 p2 = plot(tlist,dEdt)
-
-#%%
