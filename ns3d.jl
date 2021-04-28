@@ -9,12 +9,17 @@ module consts
 end
 
 #Create the grid
-function grid_init(nx,ny,nz)
+function grid_init(nx,ny,nz,idbg)
     #Intialise the grid
     lx = 2*pi
     ly = 2*pi
     lz = 2*pi
 
+    if (idbg==1)
+        lx = 1.0
+        ly = 1.0
+        lz = 1.0
+    end
     dx = lx/nx
     dy = ly/ny
     dz = lz/nz
@@ -43,7 +48,7 @@ function grid_init(nx,ny,nz)
 end
 
 #Initialise
-function init_3d(Ma,x,y,z,nx,ny,nz)
+function init_3d(Ma,x,y,z,nx,ny,nz,idbg)
 
     γ = consts.γ
 
@@ -66,18 +71,42 @@ function init_3d(Ma,x,y,z,nx,ny,nz)
 
                 xyz = [x[i,j,k],y[i,j,k],z[i,j,k]]
 
-                #Primitives
-                ρ = 1.0
-                u = sin(xyz[1])*cos(xyz[2])*cos(xyz[3])
-                v =-cos(xyz[1])*sin(xyz[2])*cos(xyz[3])
-                w = 0.0
-                p = 1/(γ*Ma^2) +
-                    (cos(2*xyz[1])+cos(2*xyz[2]))*(cos(2*xyz[3])+2.0)/16.0
-                e = p/(ρ*(γ-1)) +
-                    0.5*(u^2 + v^2 + w^2)
+                if (idbg==1)
+                    #Sod Shock Testing
+                    if (x[i,j,k] <= 0.5)
+                        ρ = 1.0
+                        u = 0.0
+                        v = 0.0
+                        w = 0.0
+                        p = 1.0
+                        e = p/(ρ*(γ-1)) +
+                            0.5*(u^2 + v^2 + w^2)
+                    else
+                        ρ = 0.125
+                        u = 0.0
+                        v = 0.0
+                        w = 0.0
+                        p = 0.1
+                        e = p/(ρ*(γ-1)) +
+                            0.5*(u^2 + v^2 + w^2)
+                    end
+                    pq[1:6,i,j,k] = [ρ,u,v,w,p,e]
 
-                pq[1:6,i,j,k] = [ρ,u,v,w,p,e]
+                else
 
+                    #Primitives
+                    ρ = 1.0
+                    u = sin(xyz[1])*cos(xyz[2])*cos(xyz[3])
+                    v =-cos(xyz[1])*sin(xyz[2])*cos(xyz[3])
+                    w = 0.0
+                    p = 1/(γ*Ma^2) +
+                        (cos(2*xyz[1])+cos(2*xyz[2]))*(cos(2*xyz[3])+2.0)/16.0
+                    e = p/(ρ*(γ-1)) +
+                        0.5*(u^2 + v^2 + w^2)
+
+                    pq[1:6,i,j,k] = [ρ,u,v,w,p,e]
+
+                end
                 #Conservatives
                 cons[1] = ρ
                 cons[2] = ρ*u
@@ -118,32 +147,59 @@ function calc_dt(cfl,γ,q,nx,ny,nz,dx,dy,dz)
 end
 
 #Boundary Conditions
-function expbc!(q,nx,ny,nz)
-    #Periodic Boundary Conditions
-    # In x-direction
-    q[:,-1,:,:]   = q[:,nx,:,:]
-    q[:,-2,:,:]   = q[:,nx-1,:,:]
-    q[:,-3,:,:]   = q[:,nx-2,:,:]
-    q[:,nx+1,:,:] = q[:,0,:,:]
-    q[:,nx+2,:,:] = q[:,1,:,:]
-    q[:,nx+3,:,:] = q[:,2,:,:]
+function expbc!(q,nx,ny,nz,idbg)
+    if (idbg==1)
+        # In x-direction
+        q[:,-1,:,:]   = q[:,0,:,:]
+        q[:,-2,:,:]   = q[:,0,:,:]
+        q[:,-3,:,:]   = q[:,0,:,:]
+        q[:,nx+1,:,:] = q[:,nx,:,:]
+        q[:,nx+2,:,:] = q[:,nx,:,:]
+        q[:,nx+3,:,:] = q[:,nx,:,:]
 
-    # In y-direction
-    q[:,:,-1,:]   = q[:,ny,:,:]
-    q[:,:,-2,:]   = q[:,ny-1,:,:]
-    q[:,:,-3,:]   = q[:,ny-2,:,:]
-    q[:,:,ny+1,:] = q[:,0,:,:]
-    q[:,:,ny+2,:] = q[:,1,:,:]
-    q[:,:,ny+3,:] = q[:,2,:,:]
 
-    # In z-direction
-    q[:,:,:,-1]   = q[:,:,:,nz]
-    q[:,:,:,-2]   = q[:,:,:,nz-1]
-    q[:,:,:,-3]   = q[:,:,:,nz-2]
-    q[:,:,:,nz+1] = q[:,:,:,0]
-    q[:,:,:,nz+2] = q[:,:,:,1]
-    q[:,:,:,nz+3] = q[:,:,:,2]
+        # In y-direction
+        q[:,:,-1,:]   = q[:,:,0,:]
+        q[:,:,-2,:]   = q[:,:,0,:]
+        q[:,:,-3,:]   = q[:,:,0,:]
+        q[:,:,ny+1,:] = q[:,:,ny,:]
+        q[:,:,ny+2,:] = q[:,:,ny,:]
+        q[:,:,ny+3,:] = q[:,:,ny,:]
 
+        # In z-direction
+        q[:,:,:,-1]   = q[:,:,:,0]
+        q[:,:,:,-2]   = q[:,:,:,0]
+        q[:,:,:,-3]   = q[:,:,:,0]
+        q[:,:,:,nz+1] = q[:,:,:,nz]
+        q[:,:,:,nz+2] = q[:,:,:,nz]
+        q[:,:,:,nz+3] = q[:,:,:,nz]
+
+    else
+        #Periodic Boundary Conditions
+        # In x-direction
+        q[:,-1,:,:]   = q[:,nx,:,:]
+        q[:,-2,:,:]   = q[:,nx-1,:,:]
+        q[:,-3,:,:]   = q[:,nx-2,:,:]
+        q[:,nx+1,:,:] = q[:,0,:,:]
+        q[:,nx+2,:,:] = q[:,1,:,:]
+        q[:,nx+3,:,:] = q[:,2,:,:]
+
+        # In y-direction
+        q[:,:,-1,:]   = q[:,:,ny,:]
+        q[:,:,-2,:]   = q[:,:,ny-1,:]
+        q[:,:,-3,:]   = q[:,:,ny-2,:]
+        q[:,:,ny+1,:] = q[:,:,0,:]
+        q[:,:,ny+2,:] = q[:,:,1,:]
+        q[:,:,ny+3,:] = q[:,:,2,:]
+
+        # In z-direction
+        q[:,:,:,-1]   = q[:,:,:,nz]
+        q[:,:,:,-2]   = q[:,:,:,nz-1]
+        q[:,:,:,-3]   = q[:,:,:,nz-2]
+        q[:,:,:,nz+1] = q[:,:,:,0]
+        q[:,:,:,nz+2] = q[:,:,:,1]
+        q[:,:,:,nz+3] = q[:,:,:,2]
+    end
 end
 
 #Create function for writing output
@@ -167,55 +223,6 @@ function output_data(q,x,y,z,nx,ny,nz)
     return nothing
 end
 
-#Create a function for the ns3d run
-function ns3d(cfl=0.5,nx=16,ny=16,nz=16,nitermax=10000,tend=1.0)
-
-    #Setup required
-    γ  = consts.γ
-    Ma = 0.08
-    time = 0.0
-
-    #Create the grid
-    x,y,z,dx,dy,dz = grid_init(nx,ny,nz)
-
-    #Initialise
-    q,pq_init = init_3d(Ma,x,y,z,nx,ny,nz)
-    qnew = zeros(5,nx+7,ny+7,nz+7)
-    qnew = OffsetArray(qnew,1:5,-3:nx+3,-3:ny+3,-3:nz+3)
-
-    #Calc_dt
-    dt = calc_dt(cfl,γ,q,nx,ny,nz,dx,dy,dz)
-
-    #Boundary Conditions
-    expbc!(q,nx,ny,nz)
-
-    for niter in 1:nitermax
-        dt = calc_dt(cfl,γ,q,nx,ny,nz,dx,dy,dz)
-        if time+dt > tend
-            dt = tend-time
-        end
-
-        expbc!(q,nx,ny,nz)
-
-        qnew = tvdrk3(nx,ny,nz,dx,dy,dz,q,dt)
-
-        expbc!(qnew,nx,ny,nz)
-
-        q = copy(qnew)
-        time = time + dt
-
-        @info niter,time,dt
-        if (time >= tend)
-            break
-        end
-    end
-
-    #Output data
-    output_data(q,x,y,z,nx,ny,nz)
-
-    return nothing
-end
-
 #3D Weno function
 function weno5(nx,ny,nz,q,axis)
 
@@ -228,7 +235,7 @@ function weno5(nx,ny,nz,q,axis)
         n1,n2,n3 = ny,nx,nz
     elseif (axis==3)
         qq = permutedims(q,[1,4,3,2])
-        n1,n2,n3 = nz,ny,nz
+        n1,n2,n3 = nz,ny,nx
     else
         println("Error at Axes Weno")
     end
@@ -277,7 +284,7 @@ function weno5(nx,ny,nz,q,axis)
         q2 = c0.*(2.0.*q[:,i,:,:].+5.0.*q[:,i+1,:,:].-q[:,i+2,:,:])
 
         qL[:,i,:,:] = w0.*q0 + w1.*q1 + w2.*q2
-        #@info qL[:,i]
+
 
         #Negative reconstruction
         α0 = d0./(β2[:,i+1,:,:].+eps).^pweno
@@ -303,8 +310,8 @@ function weno5(nx,ny,nz,q,axis)
         qL = permutedims(qL,[1,3,2,4])
         qR = permutedims(qR,[1,3,2,4])
     elseif (axis==3)
-        qL = permutedims(qL,[1,3,2,4])
-        qR = permutedims(qR,[1,3,2,4])
+        qL = permutedims(qL,[1,4,3,2])
+        qR = permutedims(qR,[1,4,3,2])
     else
         println("Error at Axes Weno")
     end
@@ -367,7 +374,21 @@ function cs_weno(q,nx,ny,nz,axis)
     e = q[5,:,:,:]./ρ
     p = (γ-1)*(q[5,:,:,:] - 0.5*ρ.*(u.^2+v.^2+w.^2))
 
-    a  = sqrt.(γ*p./ρ)
+    #a  = sqrt.(γ*p./ρ)
+
+
+    a = OffsetArray(zeros(nx+7,ny+7,nz+7),-3:nx+3,-3:ny+3,-3:nz+3)
+    for k in -3:nz+3
+    for j in -3:ny+3
+    for i in -3:nx+3
+        if (ρ[i,j,k]<0 || p[i,j,k]<0)
+        @info i,j,k,p[i,j,k],ρ[i,j,k]
+        end
+        a[i,j,k] = sqrt(γ*p[i,j,k]/ρ[i,j,k])
+    end
+    end
+    end
+
 
     r  = OffsetArray(zeros(nx+7,ny+7,nz+7),-3:nx+3,-3:ny+3,-3:nz+3)
     cs = OffsetArray(zeros(nx+7,ny+7,nz+7),-3:nx+3,-3:ny+3,-3:nz+3)
@@ -478,12 +499,15 @@ function rhsInv(nx,ny,nz,dx,dy,dz,q)
     for i in 0:nx
         r[:,i,:,:] = -(Fx[:,i,:,:]-Fx[:,i-1,:,:])./dx
     end
+
     for j in 0:ny
         r[:,:,j,:] = r[:,:,j,:] -(Fy[:,:,j,:]-Fy[:,:,j-1,:])./dy
     end
+
     for k in 0:nz
         r[:,:,:,k] = r[:,:,:,k] -(Fz[:,:,:,k]-Fz[:,:,:,k-1])./dz
     end
+
     return r
 end
 
@@ -496,24 +520,74 @@ function rhs(nx,ny,nz,dx,dy,dz,q)
 end
 
 #Time stepping RK3
-function tvdrk3(nx,ny,nz,dx,dy,dz,q,dt)
+function tvdrk3(nx,ny,nz,dx,dy,dz,q,dt,idbg)
     qq = copy(q)
     qn = copy(q)
 
     #First step
-    expbc!(q,nx,ny,nz)
+    expbc!(q,nx,ny,nz,idbg)
     r  = rhs(nx,ny,nz,dx,dy,dz,q)
     qq = q + dt*r
 
     #Second step
-    expbc!(qq,nx,ny,nz)
+    expbc!(qq,nx,ny,nz,idbg)
     r  = rhs(nx,ny,nz,dx,dy,dz,qq)
     qq = 0.75*q + 0.25*qq + 0.25*dt*r
 
     #Third Step
-    expbc!(qq,nx,ny,nz)
+    expbc!(qq,nx,ny,nz,idbg)
     r  = rhs(nx,ny,nz,dx,dy,dz,qq)
     qn = 1/3*q + 2/3*qq + 2/3*dt*r
 
     return qn
+end
+
+
+#Create a function for the ns3d run
+function ns3d(cfl=0.5,nx=16,ny=16,nz=16,nitermax=10000,tend=1.0,idbg=0)
+
+    #Setup required
+    γ  = consts.γ
+    Ma = 0.08
+    time = 0.0
+
+    #Create the grid
+    x,y,z,dx,dy,dz = grid_init(nx,ny,nz,idbg)
+
+    #Initialise
+    q,pq_init = init_3d(Ma,x,y,z,nx,ny,nz,idbg)
+    qnew = zeros(5,nx+7,ny+7,nz+7)
+    qnew = OffsetArray(qnew,1:5,-3:nx+3,-3:ny+3,-3:nz+3)
+
+    #Boundary Conditions
+    expbc!(q,nx,ny,nz,idbg)
+
+    #Calc_dt
+    dt = calc_dt(cfl,γ,q,nx,ny,nz,dx,dy,dz)
+
+    for niter in 1:nitermax
+        dt = calc_dt(cfl,γ,q,nx,ny,nz,dx,dy,dz)
+        if time+dt > tend
+            dt = tend-time
+        end
+
+        expbc!(q,nx,ny,nz,idbg)
+
+        qnew = tvdrk3(nx,ny,nz,dx,dy,dz,q,dt,idbg)
+
+        expbc!(qnew,nx,ny,nz,idbg)
+
+        q = copy(qnew)
+        time = time + dt
+
+        @info niter,time,dt
+        if (time >= tend)
+            break
+        end
+    end
+
+    #Output data
+    output_data(q,x,y,z,nx,ny,nz)
+
+    return nothing
 end
