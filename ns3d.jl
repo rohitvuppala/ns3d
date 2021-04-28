@@ -168,7 +168,7 @@ function output_data(q,x,y,z,nx,ny,nz)
 end
 
 #Create a function for the ns3d run
-function ns3d(cfl=0.5,nx=32,ny=32,nz=32,nitermax=10000,tend=1.0)
+function ns3d(cfl=0.5,nx=16,ny=16,nz=16,nitermax=10000,tend=1.0)
 
     #Setup required
     γ  = consts.γ
@@ -181,7 +181,7 @@ function ns3d(cfl=0.5,nx=32,ny=32,nz=32,nitermax=10000,tend=1.0)
     #Initialise
     q,pq_init = init_3d(Ma,x,y,z,nx,ny,nz)
     qnew = zeros(5,nx+7,ny+7,nz+7)
-    qnew = OffsetArray(q,1:5,-3:nx+3,-3:ny+3,-3:nz+3)
+    qnew = OffsetArray(qnew,1:5,-3:nx+3,-3:ny+3,-3:nz+3)
 
     #Calc_dt
     dt = calc_dt(cfl,γ,q,nx,ny,nz,dx,dy,dz)
@@ -230,7 +230,7 @@ function weno5(nx,ny,nz,q,axis)
         qq = permutedims(q,[1,4,3,2])
         n1,n2,n3 = nz,ny,nz
     else
-        print("Error at Axes Weno")
+        println("Error at Axes Weno")
     end
 
     #qL and qR
@@ -249,9 +249,9 @@ function weno5(nx,ny,nz,q,axis)
     d2 = 3/10
 
     #Compute smoothness
-    β0 = OffsetArray(zeros(5,n1+7),1:5,-3:nx+3,-3:ny+2,-3:nz+3)
-    β1 = OffsetArray(zeros(5,n1+7),1:5,-3:nx+3,-3:ny+3,-3:nz+3)
-    β2 = OffsetArray(zeros(5,n1+7),1:5,-3:nx+3,-3:ny+3,-3:nz+3)
+    β0 = OffsetArray(zeros(5,n1+7,n2+7,n3+7),1:5,-3:n1+3,-3:n2+3,-3:n3+3)
+    β1 = OffsetArray(zeros(5,n1+7,n2+7,n3+7),1:5,-3:n1+3,-3:n2+3,-3:n3+3)
+    β2 = OffsetArray(zeros(5,n1+7,n2+7,n3+7),1:5,-3:n1+3,-3:n2+3,-3:n3+3)
 
     for i in -1:n1+1
         β0[:,i,:,:] = c1*(q[:,i-2,:,:]-2*q[:,i-1,:,:]+q[:,i,:,:]).^2
@@ -292,7 +292,7 @@ function weno5(nx,ny,nz,q,axis)
         q1 = c0.*(-q[:,i+2,:,:].+5.0.*q[:,i+1,:,:].+2.0.*q[:,i,:,:])
         q2 = c0.*(2.0.*q[:,i+1,:,:].+5.0.*q[:,i,:,:].-q[:,i-1,:,:])
 
-        qR[:,i] = w0.*q0 + w1.*q1 + w2.*q2
+        qR[:,i,:,:] = w0.*q0 + w1.*q1 + w2.*q2
 
     end
 
@@ -306,7 +306,7 @@ function weno5(nx,ny,nz,q,axis)
         qL = permutedims(qL,[1,3,2,4])
         qR = permutedims(qR,[1,3,2,4])
     else
-        print("Error at Axes Weno")
+        println("Error at Axes Weno")
     end
 
     return qL,qR
@@ -316,15 +316,15 @@ end
 function flux(nx,ny,nz,q,axis)
 
     γ = consts.γ
-    ρ = q[1,:]
-    u = q[2,:]./ρ
-    v = q[3,:]./ρ
-    w = q[4,:]./ρ
-    e = q[5,:]./ρ
-    p = (γ-1)*(q[5,:] - 0.5*ρ.*(u.^2+v.^2+w.^2))
+    ρ = q[1,:,:,:]
+    u = q[2,:,:,:]./ρ
+    v = q[3,:,:,:]./ρ
+    w = q[4,:,:,:]./ρ
+    e = q[5,:,:,:]./ρ
+    p = (γ-1)*(q[5,:,:,:] - 0.5*ρ.*(u.^2+v.^2+w.^2))
     h = e + p./ρ
 
-    if (axis==0)
+    if (axis==1)
         F = OffsetArray(zeros(5,nx+7,ny+7,nz+7),1:5,-3:nx+3,-3:ny+3,-3:nz+3)
         F[1,:,:,:] = ρ.*u
         F[2,:,:,:] = ρ.*(u.^2) + p
@@ -334,7 +334,7 @@ function flux(nx,ny,nz,q,axis)
 
         return F
 
-    elseif (axis==1)
+    elseif (axis==2)
         G = OffsetArray(zeros(5,nx+7,ny+7,nz+7),1:5,-3:nx+3,-3:ny+3,-3:nz+3)
         G[1,:,:,:] = ρ.*v
         G[2,:,:,:] = ρ.*(u.*v)
@@ -343,7 +343,7 @@ function flux(nx,ny,nz,q,axis)
         G[5,:,:,:] = ρ.*v.*h
 
         return G
-    elseif (axis==2)
+    elseif (axis==3)
         H = OffsetArray(zeros(5,nx+7,ny+7,nz+7),1:5,-3:nx+3,-3:ny+3,-3:nz+3)
         H[1,:,:,:] = ρ.*w
         H[2,:,:,:] = ρ.*(u.*w)
@@ -353,57 +353,57 @@ function flux(nx,ny,nz,q,axis)
 
         return H
     else
-        print("Error in Axes index at Flux")
+        println("Error in Axes index at Flux")
     end
 end
 
 #Propagation speed calculation
 function cs_weno(q,nx,ny,nz,axis)
     γ = consts.γ
-    ρ = q[1,:]
-    u = q[2,:]./ρ
-    v = q[3,:]./ρ
-    w = q[4,:]./ρ
-    e = q[5,:]./ρ
-    p = (γ-1)*(q[5,:] - 0.5*ρ.*(u.^2+v.^2+w.^2))
+    ρ = q[1,:,:,:]
+    u = q[2,:,:,:]./ρ
+    v = q[3,:,:,:]./ρ
+    w = q[4,:,:,:]./ρ
+    e = q[5,:,:,:]./ρ
+    p = (γ-1)*(q[5,:,:,:] - 0.5*ρ.*(u.^2+v.^2+w.^2))
 
     a  = sqrt.(γ*p./ρ)
 
     r  = OffsetArray(zeros(nx+7,ny+7,nz+7),-3:nx+3,-3:ny+3,-3:nz+3)
-    cs = OffsetArray(zeros(5,nx+7,ny+7,nz+7),1:5,-3:nx+3,-3:ny+3,-3:nz+3)
+    cs = OffsetArray(zeros(nx+7,ny+7,nz+7),-3:nx+3,-3:ny+3,-3:nz+3)
 
     if (axis==1)
-        r = max.(abs(u),abs(u-a),abs(u+a))
+        r = max.(abs.(u),abs.(u-a),abs.(u+a))
 
         for i in -1:nx
-            cs[i,:,:]=  max.(abs(r[i-2,:,:]),abs(r[i-1,:,:]),abs(r[i,:,:]),
-                             abs(r[i+1,:,:]),abs(r[i+2,:,:]),abs(r[i+3,:,:]))
+            cs[i,:,:]=  max.(abs.(r[i-2,:,:]),abs.(r[i-1,:,:]),abs.(r[i,:,:]),
+                             abs.(r[i+1,:,:]),abs.(r[i+2,:,:]),abs.(r[i+3,:,:]))
         end
 
     elseif (axis==2)
-        r = max.(abs(u[i,j,k]),abs(u[i,j,k]-a[i,j,k]),abs(u[i,j,k]+a[i,j,k]))
+        r = max.(abs.(u),abs.(u-a),abs.(u+a))
 
         for j in -1:ny
-            cs[:,j,:]=  max.(abs(r[:,j-2,:]),abs(r[:,j-1,:]),abs(r[:,j,:]),
-                             abs(r[:,j+1,:]),abs(r[:,j+2,:]),abs(r[:,j+3,:]))
+            cs[:,j,:]=  max.(abs.(r[:,j-2,:]),abs.(r[:,j-1,:]),abs.(r[:,j,:]),
+                             abs.(r[:,j+1,:]),abs.(r[:,j+2,:]),abs.(r[:,j+3,:]))
         end
 
     elseif (axis==3)
-        r= max.(abs(u[:,:,k]),abs(u[:,:,k]-a[:,:,k]),abs(u[:,:,k]+a[:,:,k]))
+        r= max.(abs.(u),abs.(u-a),abs.(u+a))
 
         for k in -1:nz
-            cs[:,:,k]=  max.(abs(r[:,:,k-2]),abs(r[:,:,k-1]),abs(r[:,:,k]),
-                             abs(r[:,:,k+1]),abs(r[:,:,k+2]),abs(r[:,:,k+3]))
+            cs[:,:,k]=  max.(abs.(r[:,:,k-2]),abs.(r[:,:,k-1]),abs.(r[:,:,k]),
+                             abs.(r[:,:,k+1]),abs.(r[:,:,k+2]),abs.(r[:,:,k+3]))
         end
     else
-        print("Error Axes Index at cs_weno")
+        println("Error Axes Index at cs_weno")
     end
 
     return cs
 end
 
 #Rusonov Flux Calc
-function rusanov_3d(q,qL,fluxL,qR,fluxR,axis)
+function rusanov_3d(q,qL,fluxL,qR,fluxR,nx,ny,nz,axis)
     cs = cs_weno(q,nx,ny,nz,axis)
 
     if (axis==1)
@@ -414,7 +414,7 @@ function rusanov_3d(q,qL,fluxL,qR,fluxR,axis)
 
         for i in -1:nx
             for n in 1:5
-                F[n,i,:,:] = 0.5*(FL[n,i,:,:]+FR[n,i,:,:]) + 0.5*cs[i,:,:]*(qL[n,i,:,:]-qR[n,i,:,:])
+                F[n,i,:,:] = 0.5*(FL[n,i,:,:]+FR[n,i,:,:]) + 0.5*cs[i,:,:].*(qL[n,i,:,:]-qR[n,i,:,:])
             end
         end
 
@@ -427,7 +427,7 @@ function rusanov_3d(q,qL,fluxL,qR,fluxR,axis)
 
         for j in -1:ny
             for n in 1:5
-                G[n,:,j,:] = 0.5*(GL[n,:,j,:]+GR[n,:,j,:]) + 0.5*cs[:,j,:]*(qL[n,:,j,:]-qR[n,:,j,:])
+                G[n,:,j,:] = 0.5*(GL[n,:,j,:]+GR[n,:,j,:]) + 0.5*cs[:,j,:].*(qL[n,:,j,:]-qR[n,:,j,:])
             end
         end
 
@@ -441,13 +441,13 @@ function rusanov_3d(q,qL,fluxL,qR,fluxR,axis)
 
         for k in -1:nz
             for n in 1:5
-                H[n,:,:,k] = 0.5*(HL[n,:,:,k]+HR[n,:,:,k]) + 0.5*cs[:,:,k]*(qL[n,:,:,k]-qR[n,:,:,k])
+                H[n,:,:,k] = 0.5*(HL[n,:,:,k]+HR[n,:,:,k]) + 0.5*cs[:,:,k].*(qL[n,:,:,k]-qR[n,:,:,k])
             end
         end
 
         return H
     else
-        print("Axes Index Error at rusanov_3d")
+        println("Axes Index Error at rusanov_3d")
     end
 end
 
@@ -457,22 +457,22 @@ function rhsInv(nx,ny,nz,dx,dy,dz,q)
     r = OffsetArray(zeros(5,nx+7,ny+7,nz+7),1:5,-3:nx+3,-3:ny+3,-3:nz+3)
 
     #x-direction
-    qLx,qRx = weno5(nx,ny,nz,q,axis=1)
-    FLx = flux(nx,ny,nz,qLx,axis=1)
-    FRx = flux(nx,ny,nz,qRx,axis=1)
-    Fx  = rusanov_3d(q,qLx,FLx,qRx,FRx,axis=1)
+    qLx,qRx = weno5(nx,ny,nz,q,1)
+    FLx = flux(nx,ny,nz,qLx,1)
+    FRx = flux(nx,ny,nz,qRx,1)
+    Fx  = rusanov_3d(q,qLx,FLx,qRx,FRx,nx,ny,nz,1)
 
     #y-direction
-    qLy,qRy = weno5(nx,ny,nz,q,axis=2)
-    FLy = flux(nx,ny,nz,qLy,axis=2)
-    FRy = flux(nx,ny,nz,qRy,axis=2)
-    Fy  = rusanov_3d(q,qLy,FLy,qRy,FRy,axis=2)
+    qLy,qRy = weno5(nx,ny,nz,q,2)
+    FLy = flux(nx,ny,nz,qLy,2)
+    FRy = flux(nx,ny,nz,qRy,2)
+    Fy  = rusanov_3d(q,qLy,FLy,qRy,FRy,nx,ny,nz,2)
 
     #z-direction
-    qLz,qRz = weno5(nx,ny,nz,q,axis=3)
-    FLz = flux(nx,ny,nz,qLz,axis=3)
-    FRz = flux(nx,ny,nz,qRz,axis=3)
-    Fz  = rusanov_3d(q,qLz,FLz,qRz,FRz,axis=3)
+    qLz,qRz = weno5(nx,ny,nz,q,3)
+    FLz = flux(nx,ny,nz,qLz,3)
+    FRz = flux(nx,ny,nz,qRz,3)
+    Fz  = rusanov_3d(q,qLz,FLz,qRz,FRz,nz,ny,nz,3)
 
 
     for i in 0:nx
@@ -481,7 +481,7 @@ function rhsInv(nx,ny,nz,dx,dy,dz,q)
     for j in 0:ny
         r[:,:,j,:] = r[:,:,j,:] -(Fy[:,:,j,:]-Fy[:,:,j-1,:])./dy
     end
-    for i in 0:nz
+    for k in 0:nz
         r[:,:,:,k] = r[:,:,:,k] -(Fz[:,:,:,k]-Fz[:,:,:,k-1])./dz
     end
     return r
