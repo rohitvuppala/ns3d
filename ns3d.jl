@@ -566,3 +566,5 @@ tke,dEdt,tlist = ns3d(0.5,16,16,16,1000000,20.0)
 
 p1 = plot(tlist,tke)
 p2 = plot(tlist,dEdt)
+
+#%%
