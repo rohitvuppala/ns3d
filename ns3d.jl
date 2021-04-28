@@ -78,6 +78,7 @@ function init_3d(Ma,x,y,z,nx,ny,nz)
 
                 pq[1:6,i,j,k] = [ρ,u,v,w,p,e]
 
+
                 #Conservatives
                 cons[1] = ρ
                 cons[2] = ρ*u
@@ -119,6 +120,7 @@ end
 
 #Boundary Conditions
 function expbc!(q,nx,ny,nz)
+
     #Periodic Boundary Conditions
     # In x-direction
     q[:,-1,:,:]   = q[:,nx,:,:]
@@ -129,12 +131,12 @@ function expbc!(q,nx,ny,nz)
     q[:,nx+3,:,:] = q[:,2,:,:]
 
     # In y-direction
-    q[:,:,-1,:]   = q[:,ny,:,:]
-    q[:,:,-2,:]   = q[:,ny-1,:,:]
-    q[:,:,-3,:]   = q[:,ny-2,:,:]
-    q[:,:,ny+1,:] = q[:,0,:,:]
-    q[:,:,ny+2,:] = q[:,1,:,:]
-    q[:,:,ny+3,:] = q[:,2,:,:]
+    q[:,:,-1,:]   = q[:,:,ny,:]
+    q[:,:,-2,:]   = q[:,:,ny-1,:]
+    q[:,:,-3,:]   = q[:,:,ny-2,:]
+    q[:,:,ny+1,:] = q[:,:,0,:]
+    q[:,:,ny+2,:] = q[:,:,1,:]
+    q[:,:,ny+3,:] = q[:,:,2,:]
 
     # In z-direction
     q[:,:,:,-1]   = q[:,:,:,nz]
@@ -167,6 +169,7 @@ function output_data(q,x,y,z,nx,ny,nz)
     return nothing
 end
 
+<<<<<<< HEAD
 #Create a function for the ns3d run
 <<<<<<< HEAD
 function ns3d(cfl=0.5,nx=32,ny=32,nz=32,nitermax=10000,tend=1.0)
@@ -297,19 +300,21 @@ function cs_weno(q,nx,ny,nz)
 end
 
 =======
+=======
+>>>>>>> dev
 #3D Weno function
 function weno5(nx,ny,nz,q,axis)
 
     #Swap axes as required NOTE: First index stores variables
     if (axis==1)
-        qq = copy(q)
+        #q = copy(q)
         n1,n2,n3 = nx,ny,nz
     elseif (axis==2)
-        qq = permutedims(q,[1,3,2,4])
+        q = permutedims(q,[1,3,2,4])
         n1,n2,n3 = ny,nx,nz
     elseif (axis==3)
-        qq = permutedims(q,[1,4,3,2])
-        n1,n2,n3 = nz,ny,nz
+        q = permutedims(q,[1,4,3,2])
+        n1,n2,n3 = nz,ny,nx
     else
         println("Error at Axes Weno")
     end
@@ -358,7 +363,7 @@ function weno5(nx,ny,nz,q,axis)
         q2 = c0.*(2.0.*q[:,i,:,:].+5.0.*q[:,i+1,:,:].-q[:,i+2,:,:])
 
         qL[:,i,:,:] = w0.*q0 + w1.*q1 + w2.*q2
-        #@info qL[:,i]
+
 
         #Negative reconstruction
         α0 = d0./(β2[:,i+1,:,:].+eps).^pweno
@@ -384,8 +389,8 @@ function weno5(nx,ny,nz,q,axis)
         qL = permutedims(qL,[1,3,2,4])
         qR = permutedims(qR,[1,3,2,4])
     elseif (axis==3)
-        qL = permutedims(qL,[1,3,2,4])
-        qR = permutedims(qR,[1,3,2,4])
+        qL = permutedims(qL,[1,4,3,2])
+        qR = permutedims(qR,[1,4,3,2])
     else
         println("Error at Axes Weno")
     end
@@ -448,7 +453,21 @@ function cs_weno(q,nx,ny,nz,axis)
     e = q[5,:,:,:]./ρ
     p = (γ-1)*(q[5,:,:,:] - 0.5*ρ.*(u.^2+v.^2+w.^2))
 
-    a  = sqrt.(γ*p./ρ)
+    #a  = sqrt.(γ*p./ρ)
+
+
+    a = OffsetArray(zeros(nx+7,ny+7,nz+7),-3:nx+3,-3:ny+3,-3:nz+3)
+    for k in -3:nz+3
+    for j in -3:ny+3
+    for i in -3:nx+3
+        if (ρ[i,j,k]<0 || p[i,j,k]<0)
+        @info i,j,k,p[i,j,k],ρ[i,j,k]
+        end
+        a[i,j,k] = sqrt(γ*p[i,j,k]/ρ[i,j,k])
+    end
+    end
+    end
+
 
     r  = OffsetArray(zeros(nx+7,ny+7,nz+7),-3:nx+3,-3:ny+3,-3:nz+3)
     cs = OffsetArray(zeros(nx+7,ny+7,nz+7),-3:nx+3,-3:ny+3,-3:nz+3)
@@ -559,12 +578,15 @@ function rhsInv(nx,ny,nz,dx,dy,dz,q)
     for i in 0:nx
         r[:,i,:,:] = -(Fx[:,i,:,:]-Fx[:,i-1,:,:])./dx
     end
+
     for j in 0:ny
         r[:,:,j,:] = r[:,:,j,:] -(Fy[:,:,j,:]-Fy[:,:,j-1,:])./dy
     end
+
     for k in 0:nz
         r[:,:,:,k] = r[:,:,:,k] -(Fz[:,:,:,k]-Fz[:,:,:,k-1])./dz
     end
+
     return r
 end
 
@@ -578,7 +600,7 @@ end
 
 >>>>>>> testing
 #Time stepping RK3
-function tvdrk3(nx,ny,nz,dx,dy,dz,q,dt)
+function tvdrk3(nx,ny,nz,dx,dy,dz,q,dt
     qq = copy(q)
     qn = copy(q)
 
@@ -617,4 +639,54 @@ function tvdrk3(nx,ny,nz,dx,dy,dz,q,dt)
 >>>>>>> testing
 
     return qn
+end
+
+
+#Create a function for the ns3d run
+function ns3d(cfl=0.5,nx=16,ny=16,nz=16,nitermax=10000,tend=1.0)
+
+    #Setup required
+    γ  = consts.γ
+    Ma = 0.08
+    time = 0.0
+
+    #Create the grid
+    x,y,z,dx,dy,dz = grid_init(nx,ny,nz)
+
+    #Initialise
+    q,pq_init = init_3d(Ma,x,y,z,nx,ny,nz)
+    qnew = zeros(5,nx+7,ny+7,nz+7)
+    qnew = OffsetArray(qnew,1:5,-3:nx+3,-3:ny+3,-3:nz+3)
+
+    #Boundary Conditions
+    expbc!(q,nx,ny,nz)
+
+    #Calc_dt
+    dt = calc_dt(cfl,γ,q,nx,ny,nz,dx,dy,dz)
+
+    for niter in 1:nitermax
+        dt = calc_dt(cfl,γ,q,nx,ny,nz,dx,dy,dz)
+        if time+dt > tend
+            dt = tend-time
+        end
+
+        expbc!(q,nx,ny,nz)
+
+        qnew = tvdrk3(nx,ny,nz,dx,dy,dz,q,dt)
+
+        expbc!(qnew,nx,ny,nz)
+
+        q = copy(qnew)
+        time = time + dt
+
+        @info niter,time,dt
+        if (time >= tend)
+            break
+        end
+    end
+
+    #Output data
+    output_data(q,x,y,z,nx,ny,nz)
+
+    return nothing
 end
