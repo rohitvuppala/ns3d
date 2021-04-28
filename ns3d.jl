@@ -9,17 +9,12 @@ module consts
 end
 
 #Create the grid
-function grid_init(nx,ny,nz,idbg)
+function grid_init(nx,ny,nz)
     #Intialise the grid
     lx = 2*pi
     ly = 2*pi
     lz = 2*pi
 
-    if (idbg==1)
-        lx = 1.0
-        ly = 1.0
-        lz = 1.0
-    end
     dx = lx/nx
     dy = ly/ny
     dz = lz/nz
@@ -48,7 +43,7 @@ function grid_init(nx,ny,nz,idbg)
 end
 
 #Initialise
-function init_3d(Ma,x,y,z,nx,ny,nz,idbg)
+function init_3d(Ma,x,y,z,nx,ny,nz)
 
     γ = consts.γ
 
@@ -71,42 +66,19 @@ function init_3d(Ma,x,y,z,nx,ny,nz,idbg)
 
                 xyz = [x[i,j,k],y[i,j,k],z[i,j,k]]
 
-                if (idbg==1)
-                    #Sod Shock Testing
-                    if (x[i,j,k] <= 0.5)
-                        ρ = 1.0
-                        u = 0.0
-                        v = 0.0
-                        w = 0.0
-                        p = 1.0
-                        e = p/(ρ*(γ-1)) +
-                            0.5*(u^2 + v^2 + w^2)
-                    else
-                        ρ = 0.125
-                        u = 0.0
-                        v = 0.0
-                        w = 0.0
-                        p = 0.1
-                        e = p/(ρ*(γ-1)) +
-                            0.5*(u^2 + v^2 + w^2)
-                    end
-                    pq[1:6,i,j,k] = [ρ,u,v,w,p,e]
+                #Primitives
+                ρ = 1.0
+                u = sin(xyz[1])*cos(xyz[2])*cos(xyz[3])
+                v =-cos(xyz[1])*sin(xyz[2])*cos(xyz[3])
+                w = 0.0
+                p = 1/(γ*Ma^2) +
+                    (cos(2*xyz[1])+cos(2*xyz[2]))*(cos(2*xyz[3])+2.0)/16.0
+                e = p/(ρ*(γ-1)) +
+                    0.5*(u^2 + v^2 + w^2)
 
-                else
+                pq[1:6,i,j,k] = [ρ,u,v,w,p,e]
 
-                    #Primitives
-                    ρ = 1.0
-                    u = sin(xyz[1])*cos(xyz[2])*cos(xyz[3])
-                    v =-cos(xyz[1])*sin(xyz[2])*cos(xyz[3])
-                    w = 0.0
-                    p = 1/(γ*Ma^2) +
-                        (cos(2*xyz[1])+cos(2*xyz[2]))*(cos(2*xyz[3])+2.0)/16.0
-                    e = p/(ρ*(γ-1)) +
-                        0.5*(u^2 + v^2 + w^2)
 
-                    pq[1:6,i,j,k] = [ρ,u,v,w,p,e]
-
-                end
                 #Conservatives
                 cons[1] = ρ
                 cons[2] = ρ*u
@@ -147,59 +119,33 @@ function calc_dt(cfl,γ,q,nx,ny,nz,dx,dy,dz)
 end
 
 #Boundary Conditions
-function expbc!(q,nx,ny,nz,idbg)
-    if (idbg==1)
-        # In x-direction
-        q[:,-1,:,:]   = q[:,0,:,:]
-        q[:,-2,:,:]   = q[:,0,:,:]
-        q[:,-3,:,:]   = q[:,0,:,:]
-        q[:,nx+1,:,:] = q[:,nx,:,:]
-        q[:,nx+2,:,:] = q[:,nx,:,:]
-        q[:,nx+3,:,:] = q[:,nx,:,:]
+function expbc!(q,nx,ny,nz)
 
+    #Periodic Boundary Conditions
+    # In x-direction
+    q[:,-1,:,:]   = q[:,nx,:,:]
+    q[:,-2,:,:]   = q[:,nx-1,:,:]
+    q[:,-3,:,:]   = q[:,nx-2,:,:]
+    q[:,nx+1,:,:] = q[:,0,:,:]
+    q[:,nx+2,:,:] = q[:,1,:,:]
+    q[:,nx+3,:,:] = q[:,2,:,:]
 
-        # In y-direction
-        q[:,:,-1,:]   = q[:,:,0,:]
-        q[:,:,-2,:]   = q[:,:,0,:]
-        q[:,:,-3,:]   = q[:,:,0,:]
-        q[:,:,ny+1,:] = q[:,:,ny,:]
-        q[:,:,ny+2,:] = q[:,:,ny,:]
-        q[:,:,ny+3,:] = q[:,:,ny,:]
+    # In y-direction
+    q[:,:,-1,:]   = q[:,:,ny,:]
+    q[:,:,-2,:]   = q[:,:,ny-1,:]
+    q[:,:,-3,:]   = q[:,:,ny-2,:]
+    q[:,:,ny+1,:] = q[:,:,0,:]
+    q[:,:,ny+2,:] = q[:,:,1,:]
+    q[:,:,ny+3,:] = q[:,:,2,:]
 
-        # In z-direction
-        q[:,:,:,-1]   = q[:,:,:,0]
-        q[:,:,:,-2]   = q[:,:,:,0]
-        q[:,:,:,-3]   = q[:,:,:,0]
-        q[:,:,:,nz+1] = q[:,:,:,nz]
-        q[:,:,:,nz+2] = q[:,:,:,nz]
-        q[:,:,:,nz+3] = q[:,:,:,nz]
+    # In z-direction
+    q[:,:,:,-1]   = q[:,:,:,nz]
+    q[:,:,:,-2]   = q[:,:,:,nz-1]
+    q[:,:,:,-3]   = q[:,:,:,nz-2]
+    q[:,:,:,nz+1] = q[:,:,:,0]
+    q[:,:,:,nz+2] = q[:,:,:,1]
+    q[:,:,:,nz+3] = q[:,:,:,2]
 
-    else
-        #Periodic Boundary Conditions
-        # In x-direction
-        q[:,-1,:,:]   = q[:,nx,:,:]
-        q[:,-2,:,:]   = q[:,nx-1,:,:]
-        q[:,-3,:,:]   = q[:,nx-2,:,:]
-        q[:,nx+1,:,:] = q[:,0,:,:]
-        q[:,nx+2,:,:] = q[:,1,:,:]
-        q[:,nx+3,:,:] = q[:,2,:,:]
-
-        # In y-direction
-        q[:,:,-1,:]   = q[:,:,ny,:]
-        q[:,:,-2,:]   = q[:,:,ny-1,:]
-        q[:,:,-3,:]   = q[:,:,ny-2,:]
-        q[:,:,ny+1,:] = q[:,:,0,:]
-        q[:,:,ny+2,:] = q[:,:,1,:]
-        q[:,:,ny+3,:] = q[:,:,2,:]
-
-        # In z-direction
-        q[:,:,:,-1]   = q[:,:,:,nz]
-        q[:,:,:,-2]   = q[:,:,:,nz-1]
-        q[:,:,:,-3]   = q[:,:,:,nz-2]
-        q[:,:,:,nz+1] = q[:,:,:,0]
-        q[:,:,:,nz+2] = q[:,:,:,1]
-        q[:,:,:,nz+3] = q[:,:,:,2]
-    end
 end
 
 #Create function for writing output
@@ -520,22 +466,22 @@ function rhs(nx,ny,nz,dx,dy,dz,q)
 end
 
 #Time stepping RK3
-function tvdrk3(nx,ny,nz,dx,dy,dz,q,dt,idbg)
+function tvdrk3(nx,ny,nz,dx,dy,dz,q,dt
     qq = copy(q)
     qn = copy(q)
 
     #First step
-    expbc!(q,nx,ny,nz,idbg)
+    expbc!(q,nx,ny,nz)
     r  = rhs(nx,ny,nz,dx,dy,dz,q)
     qq = q + dt*r
 
     #Second step
-    expbc!(qq,nx,ny,nz,idbg)
+    expbc!(qq,nx,ny,nz)
     r  = rhs(nx,ny,nz,dx,dy,dz,qq)
     qq = 0.75*q + 0.25*qq + 0.25*dt*r
 
     #Third Step
-    expbc!(qq,nx,ny,nz,idbg)
+    expbc!(qq,nx,ny,nz)
     r  = rhs(nx,ny,nz,dx,dy,dz,qq)
     qn = 1/3*q + 2/3*qq + 2/3*dt*r
 
@@ -544,7 +490,7 @@ end
 
 
 #Create a function for the ns3d run
-function ns3d(cfl=0.5,nx=16,ny=16,nz=16,nitermax=10000,tend=1.0,idbg=0)
+function ns3d(cfl=0.5,nx=16,ny=16,nz=16,nitermax=10000,tend=1.0)
 
     #Setup required
     γ  = consts.γ
@@ -552,15 +498,15 @@ function ns3d(cfl=0.5,nx=16,ny=16,nz=16,nitermax=10000,tend=1.0,idbg=0)
     time = 0.0
 
     #Create the grid
-    x,y,z,dx,dy,dz = grid_init(nx,ny,nz,idbg)
+    x,y,z,dx,dy,dz = grid_init(nx,ny,nz)
 
     #Initialise
-    q,pq_init = init_3d(Ma,x,y,z,nx,ny,nz,idbg)
+    q,pq_init = init_3d(Ma,x,y,z,nx,ny,nz)
     qnew = zeros(5,nx+7,ny+7,nz+7)
     qnew = OffsetArray(qnew,1:5,-3:nx+3,-3:ny+3,-3:nz+3)
 
     #Boundary Conditions
-    expbc!(q,nx,ny,nz,idbg)
+    expbc!(q,nx,ny,nz)
 
     #Calc_dt
     dt = calc_dt(cfl,γ,q,nx,ny,nz,dx,dy,dz)
@@ -571,11 +517,11 @@ function ns3d(cfl=0.5,nx=16,ny=16,nz=16,nitermax=10000,tend=1.0,idbg=0)
             dt = tend-time
         end
 
-        expbc!(q,nx,ny,nz,idbg)
+        expbc!(q,nx,ny,nz)
 
-        qnew = tvdrk3(nx,ny,nz,dx,dy,dz,q,dt,idbg)
+        qnew = tvdrk3(nx,ny,nz,dx,dy,dz,q,dt)
 
-        expbc!(qnew,nx,ny,nz,idbg)
+        expbc!(qnew,nx,ny,nz)
 
         q = copy(qnew)
         time = time + dt
