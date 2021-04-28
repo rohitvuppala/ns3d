@@ -516,7 +516,7 @@ end
 
 >>>>>>> testing
 #Time stepping RK3
-function tvdrk3(nx,ny,nz,dx,dy,dz,q,dt
+function tvdrk3(nx,ny,nz,dx,dy,dz,q,dt)
     qq = copy(q)
     qn = copy(q)
 
@@ -538,6 +538,16 @@ function tvdrk3(nx,ny,nz,dx,dy,dz,q,dt
     return qn
 end
 
+#Compute Turbulent Kinetic Energy
+function calc_tke(q,nx,ny,nz)
+    ρ = q[1,0:nx,0:ny,0:nz]
+    u = q[2,0:nx,0:ny,0:nz]./ρ
+    v = q[3,0:nx,0:ny,0:nz]./ρ
+    w = q[4,0:nx,0:ny,0:nz]./ρ
+
+    tke = sum(0.5*(u.^2 + v.^2 + w.^2))/((nx+1)*(ny+1)*(nz+1))
+    return tke
+end
 
 #Create a function for the ns3d run
 function ns3d(cfl=0.5,nx=16,ny=16,nz=16,nitermax=10000,tend=1.0)
@@ -561,6 +571,12 @@ function ns3d(cfl=0.5,nx=16,ny=16,nz=16,nitermax=10000,tend=1.0)
     #Calc_dt
     dt = calc_dt(cfl,γ,q,nx,ny,nz,dx,dy,dz)
 
+    tke_old = calc_tke(q,nx,ny,nz)
+    tkelist = append!(zeros(0),tke_old)
+    dElist  = append!(zeros(0),0.0)
+    tlist   = append!(zeros(0),0.0)
+
+
     for niter in 1:nitermax
         dt = calc_dt(cfl,γ,q,nx,ny,nz,dx,dy,dz)
         if time+dt > tend
@@ -577,13 +593,26 @@ function ns3d(cfl=0.5,nx=16,ny=16,nz=16,nitermax=10000,tend=1.0)
         time = time + dt
 
         @info niter,time,dt
+
+        tke_new = calc_tke(q,nx,ny,nz)
+        dEdt    = (tke_new - tke_old)/dt
+
+        tkelist  = append!(tkelist,tke_new)
+        dElist   = append!(dElist,dEdt)
+        tlistc   = append!(tlist,time)
         if (time >= tend)
             break
         end
+        tke_old = copy(tke_new)
     end
 
     #Output data
     output_data(q,x,y,z,nx,ny,nz)
 
-    return nothing
+    return tkelist,dElist,tlist
 end
+#%%
+tke,dEdt,tlist = ns3d(0.5,16,16,16,1000000,20.0)
+
+p1 = plot(tlist,tke)
+p2 = plot(tlist,dEdt)
