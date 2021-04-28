@@ -169,13 +169,7 @@ function output_data(q,x,y,z,nx,ny,nz)
     return nothing
 end
 
-<<<<<<< HEAD
-#Create a function for the ns3d run
-<<<<<<< HEAD
-function ns3d(cfl=0.5,nx=32,ny=32,nz=32,nitermax=10000,tend=1.0)
-=======
 function ns3d(cfl=0.5,nx=16,ny=16,nz=16,nitermax=10000,tend=1.0)
->>>>>>> testing
 
     #Setup required
     γ  = consts.γ
@@ -188,11 +182,7 @@ function ns3d(cfl=0.5,nx=16,ny=16,nz=16,nitermax=10000,tend=1.0)
     #Initialise
     q,pq_init = init_3d(Ma,x,y,z,nx,ny,nz)
     qnew = zeros(5,nx+7,ny+7,nz+7)
-<<<<<<< HEAD
-    qnew = OffsetArray(q,1:5,-3:nx+3,-3:ny+3,-3:nz+3)
-=======
     qnew = OffsetArray(qnew,1:5,-3:nx+3,-3:ny+3,-3:nz+3)
->>>>>>> testing
 
     #Calc_dt
     dt = calc_dt(cfl,γ,q,nx,ny,nz,dx,dy,dz)
@@ -221,87 +211,13 @@ function ns3d(cfl=0.5,nx=16,ny=16,nz=16,nitermax=10000,tend=1.0)
         end
     end
 
-<<<<<<< HEAD
-
-=======
->>>>>>> testing
     #Output data
     output_data(q,x,y,z,nx,ny,nz)
 
     return nothing
 end
 
-<<<<<<< HEAD
-#Flux calculation
-function flux(nx,ny,nz,q)
-    F = OffsetArray(zeros(5,nx+7,ny+7,nz+7),1:5,-2:nx+2,-2:ny+2,-2:nz+2)
-
-    γ = 1.4
-    ρ = q[1,:]
-    u = q[2,:]./ρ
-    v = q[3,:]./ρ
-    w = q[4,:]./ρ
-    e = q[5,:]./ρ
-    p = (γ-1)*(q[5,:] - 0.5*ρ.*(u.^2+v.^2+w.^2))
-
-    F[1,:] = ρ.*u
-    F[2,:] = ρ.* (u.^2) + p
-    F[3,:] = u.* (ρ.*e + p)
-
-    return F
-end
-
-#RHS calculation
-function rhs(nx,ny,nz,dx,dy,dz,q)
-
-    r = OffsetArray(zeros(3,nx+5),1:3,-2:nx+2)
-
-    qL,qR = weno5(nx,q)
-    FL = flux(nx,qL)
-    FR = flux(nx,qR)
-
-    cs = cs_weno(q,nx)
-
-    #Compute flux with Rusanov
-    F = OffsetArray(zeros(3,nx+5),1:3,-2:nx+2)
-
-    for i in 0:nx-1
-        F[:,i] = 0.5*(FL[:,i]+FR[:,i]) + 0.5*cs[i]*(qL[:,i]-qR[:,i])
-    end
-
-    for i in 1:nx-1
-        r[:,i] = -(F[:,i]-F[:,i-1])./dx
-    end
-
-    return r
-end
-
-#Propagation speed calculation
-function cs_weno(q,nx,ny,nz)
-    γ = 1.4
-    ρ = q[1,:]
-    u = q[2,:]./ρ
-    e = q[3,:]./ρ
-    p = (γ-1)*(q[3,:] - 0.5*(ρ.*u.^2))
-
-    a  = sqrt.(γ*p./ρ)
-
-    cs = OffsetArray(zeros(nx+1),0:nx)
-    r  = OffsetArray(zeros(nx+5),-2:nx+2)
-
-    for i in -2:nx+2
-        r[i] = maximum([abs(u[i]),abs(u[i]-a[i]),abs(u[i]+a[i])])
-    end
-    for i in 0:nx-1
-        cs[i] = maximum([abs(r[i-2]),abs(r[i-1]),abs(r[i]),
-                         abs(r[i+1]),abs(r[i+2]),abs(r[i+3])])
-    end
-    return cs
-end
-
 =======
-=======
->>>>>>> dev
 #3D Weno function
 function weno5(nx,ny,nz,q,axis)
 
@@ -605,24 +521,6 @@ function tvdrk3(nx,ny,nz,dx,dy,dz,q,dt
     qn = copy(q)
 
     #First step
-<<<<<<< HEAD
-    r = rhs(nx,dx,q)
-    for i in 1:nx-1
-        qq[:,i] = q[:,i] + dt*r[:,i]
-    end
-
-    #Second step
-    r = rhs(nx,dx,qq)
-    for i in 1:nx-1
-        qq[:,i] = 0.75*q[:,i] + 0.25*qq[:,i] + 0.25*dt*r[:,i]
-    end
-
-    #Third Step
-    r = rhs(nx,dx,qq)
-    for i in 1:nx-1
-        qn[:,i] = 1/3*q[:,i] + 2/3*qq[:,i] + 2/3*dt*r[:,i]
-    end
-=======
     expbc!(q,nx,ny,nz)
     r  = rhs(nx,ny,nz,dx,dy,dz,q)
     qq = q + dt*r
@@ -636,7 +534,6 @@ function tvdrk3(nx,ny,nz,dx,dy,dz,q,dt
     expbc!(qq,nx,ny,nz)
     r  = rhs(nx,ny,nz,dx,dy,dz,qq)
     qn = 1/3*q + 2/3*qq + 2/3*dt*r
->>>>>>> testing
 
     return qn
 end
