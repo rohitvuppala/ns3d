@@ -228,13 +228,13 @@ function weno5(nx,ny,nz,q,axis)
 
     #Swap axes as required NOTE: First index stores variables
     if (axis==1)
-        qq = copy(q)
+        #q = copy(q)
         n1,n2,n3 = nx,ny,nz
     elseif (axis==2)
-        qq = permutedims(q,[1,3,2,4])
+        q = permutedims(q,[1,3,2,4])
         n1,n2,n3 = ny,nx,nz
     elseif (axis==3)
-        qq = permutedims(q,[1,4,3,2])
+        q = permutedims(q,[1,4,3,2])
         n1,n2,n3 = nz,ny,nx
     else
         println("Error at Axes Weno")
