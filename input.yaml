@@ -4,6 +4,7 @@ nx   : 8
 ny   : 8
 nz   : 8
 cfl  : 0.5
+Re   : 1600.0
 nplot: 10
 tend : 10.0
 
