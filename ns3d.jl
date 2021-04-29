@@ -519,7 +519,7 @@ function calc_tke(q,nx,ny,nz)
     v = q[3,0:nx,0:ny,0:nz]./ρ
     w = q[4,0:nx,0:ny,0:nz]./ρ
 
-    tke = sum(0.5*(u.^2 + v.^2 + w.^2))/((nx+1)*(ny+1)*(nz+1))
+    tke = sum(0.5*(u.^2 + v.^2 + w.^2))./((nx+1)*(ny+1)*(nz+1))
     return tke
 end
 
@@ -537,6 +537,7 @@ function ns3d(cfl=0.5,nx=16,ny=16,nz=16,nitermax=10000,tend=1.0,nout=10)
 
     #Initialise
     q,pq_init = init_3d(Ma,x,y,z,nx,ny,nz)
+    @info calc_tke(q,nx,ny,nz)
     qnew = zeros(5,nx+7,ny+7,nz+7)
     qnew = OffsetArray(qnew,1:5,-3:nx+3,-3:ny+3,-3:nz+3)
 
@@ -556,6 +557,7 @@ function ns3d(cfl=0.5,nx=16,ny=16,nz=16,nitermax=10000,tend=1.0,nout=10)
         mkdir("output")
     else
         rm("output/",recursive=true)
+        mkdir("output")
     end
     pvd = paraview_collection("output/output_all")
     fname = "output_initial"
@@ -567,7 +569,7 @@ function ns3d(cfl=0.5,nx=16,ny=16,nz=16,nitermax=10000,tend=1.0,nout=10)
         if time+dt > tend
             dt = tend-time
         end
-
+        tke_new = calc_tke(q,nx,ny,nz)
         expbc!(q,nx,ny,nz)
 
         qnew = tvdrk3(nx,ny,nz,dx,dy,dz,q,dt)
@@ -579,7 +581,7 @@ function ns3d(cfl=0.5,nx=16,ny=16,nz=16,nitermax=10000,tend=1.0,nout=10)
 
         @info niter,time,dt
 
-        tke_new = calc_tke(q,nx,ny,nz)
+        #tke_new = calc_tke(q,nx,ny,nz)
         dEdt    = (tke_new - tke_old)/dt
 
         tkelist  = append!(tkelist,tke_new)
@@ -605,16 +607,30 @@ function ns3d(cfl=0.5,nx=16,ny=16,nz=16,nitermax=10000,tend=1.0,nout=10)
     return tkelist,dElist,tlist
 end
 #%%
+inp_data = YAML.load_file("input.yaml")
 
 #Read the input file and parameters
+#Runtime parameters
+nitermax= inp_data["nitermax"]
+nx      = inp_data["nx"]
+ny      = inp_data["ny"]
+nz      = inp_data["nz"]
+cfl     = inp_data["cfl"]
+tend    = inp_data["tend"]
+nplot   = inp_data[:"nplot"]
 
-tke,dEdt,tlist = ns3d(0.5,16,16,16,10000,10.0,10)
+#Specific Flags
+ivis = inp_data["ivis"]
+ihpc = inp_data["ihpc"]
+tke,dEdt,tlist = ns3d(cfl,nx,nx,nx,nitermax,tend,nplot)
 npzwrite("data.npz", Dict("tkelist" => tke, "dEdt" => -dEdt, "tlist" => tlist))
 
 #%%
-vars = npzread("data.npz")
-tkelist = vars["tkelist"]
-dEdt = vars["dEdt"]
-tlist = vars["tlist"]
-p1 = plot(tlist,tke)
-p2 = plot(tlist,dEdt)
+if (ihpc==0)
+    vars = npzread("data.npz")
+    tkelist = vars["tkelist"]
+    dEdt = vars["dEdt"]
+    tlist = vars["tlist"]
+    p1 = plot(tlist,tke)
+    p2 = plot(tlist,dEdt)
+end
