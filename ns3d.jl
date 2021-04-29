@@ -482,31 +482,36 @@ function rhsVis(nx,ny,nz,dx,dy,dz,q)
 end
 
 #RHS
-function rhs(nx,ny,nz,dx,dy,dz,q)
+function rhs(nx,ny,nz,dx,dy,dz,q,ivis)
     ri = rhsInv(nx,ny,nz,dx,dy,dz,q)
-    #rv = rhsVis(nx,ny,nz,dx,dy,dz,q)
-    r  = ri #+rv
+    if (ivis==1)
+        rv = rhsVis(nx,ny,nz,dx,dy,dz,q)
+        r  = ri + rv
+    else
+        r  = ri
+    end
+
     return r
 end
 
 #Time stepping RK3
-function tvdrk3(nx,ny,nz,dx,dy,dz,q,dt)
+function tvdrk3(nx,ny,nz,dx,dy,dz,q,dt,ivis)
     qq = copy(q)
     qn = copy(q)
 
     #First step
     expbc!(q,nx,ny,nz)
-    r  = rhs(nx,ny,nz,dx,dy,dz,q)
+    r  = rhs(nx,ny,nz,dx,dy,dz,q,ivis)
     qq = q + dt*r
 
     #Second step
     expbc!(qq,nx,ny,nz)
-    r  = rhs(nx,ny,nz,dx,dy,dz,qq)
+    r  = rhs(nx,ny,nz,dx,dy,dz,qq,ivis)
     qq = 0.75*q + 0.25*qq + 0.25*dt*r
 
     #Third Step
     expbc!(qq,nx,ny,nz)
-    r  = rhs(nx,ny,nz,dx,dy,dz,qq)
+    r  = rhs(nx,ny,nz,dx,dy,dz,qq,ivis)
     qn = 1/3*q + 2/3*qq + 2/3*dt*r
 
     return qn
@@ -525,7 +530,7 @@ end
 
 
 #Create a function for the ns3d run
-function ns3d(cfl=0.5,nx=16,ny=16,nz=16,nitermax=10000,tend=1.0,nout=10)
+function ns3d(cfl=0.5,nx=16,ny=16,nz=16,nitermax=10000,tend=1.0,nout=10,ivis=0)
 
     #Setup required
     γ  = consts.γ
@@ -572,7 +577,7 @@ function ns3d(cfl=0.5,nx=16,ny=16,nz=16,nitermax=10000,tend=1.0,nout=10)
         tke_new = calc_tke(q,nx,ny,nz)
         expbc!(q,nx,ny,nz)
 
-        qnew = tvdrk3(nx,ny,nz,dx,dy,dz,q,dt)
+        qnew = tvdrk3(nx,ny,nz,dx,dy,dz,q,dt,ivis)
 
         expbc!(qnew,nx,ny,nz)
 
