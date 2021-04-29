@@ -30,9 +30,10 @@ function grid_init(nx,ny,nz)
     ly = 2*pi
     lz = 2*pi
 
-    dx = lx/nx
-    dy = ly/ny
-    dz = lz/nz
+    dx = lx/(nx+1)
+    dy = ly/(ny+1)
+    dz = lz/(nz+1)
+
 
     x = zeros(nx+7,ny+7,nz+7)
     y = zeros(nx+7,ny+7,nz+7)
@@ -47,9 +48,9 @@ function grid_init(nx,ny,nz)
     for k in -3:nz+3
         for j in -3:ny+3
             for i in -3:nx+3
-                x[i,j,k] = 0.0 + dx*i
-                y[i,j,k] = 0.0 + dy*j
-                z[i,j,k] = 0.0 + dz*k
+                x[i,j,k] = dx/2 + dx*i
+                y[i,j,k] = dy/2 + dy*j
+                z[i,j,k] = dz/2 + dz*k
             end
         end
     end
@@ -438,7 +439,7 @@ end
 
 #RHS calculation
 function rhsInv(nx,ny,nz,dx,dy,dz,q)
-
+    expbc!(q,nx,ny,nz)
     r = OffsetArray(zeros(5,nx+7,ny+7,nz+7),1:5,-3:nx+3,-3:ny+3,-3:nz+3)
 
     #x-direction
@@ -894,6 +895,10 @@ function ns3d(cfl=0.5,nx=16,ny=16,nz=16,nitermax=10000,tend=1.0,nout=10,ivis=0,R
     Ma = 0.08
     time = 0.0
 
+    nx = nx - 1
+    ny = ny - 1
+    nz = nz - 1
+
     #Create the grid
     x,y,z,dx,dy,dz = grid_init(nx,ny,nz)
 
@@ -931,7 +936,7 @@ function ns3d(cfl=0.5,nx=16,ny=16,nz=16,nitermax=10000,tend=1.0,nout=10,ivis=0,R
         if time+dt > tend
             dt = tend-time
         end
-        tke_new = calc_tke(q,nx,ny,nz)
+        #tke_new = calc_tke(q,nx,ny,nz)
         expbc!(q,nx,ny,nz)
 
         qnew = tvdrk3(nx,ny,nz,dx,dy,dz,q,dt,ivis,Re)
@@ -943,7 +948,7 @@ function ns3d(cfl=0.5,nx=16,ny=16,nz=16,nitermax=10000,tend=1.0,nout=10,ivis=0,R
 
         @info niter,time,dt
 
-        #tke_new = calc_tke(q,nx,ny,nz)
+        tke_new = calc_tke(q,nx,ny,nz)
         dEdt    = (tke_new - tke_old)/dt
 
         tkelist  = append!(tkelist,tke_new)
