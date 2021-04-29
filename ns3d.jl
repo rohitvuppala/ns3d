@@ -2,6 +2,8 @@
 using Plots
 using OffsetArrays
 using WriteVTK
+using NPZ
+using YAML
 
 module consts
     γ = 1.4
@@ -161,7 +163,10 @@ function expbc!(q,nx,ny,nz)
 end
 
 #Create function for writing output
-function output_data(q,x,y,z,nx,ny,nz)
+function output_data(q,x,y,z,nx,ny,nz,fname)
+
+    fname = "output/"*fname
+
     γ = consts.γ
     ρ = q[1,0:nx,0:ny,0:nz]
     u = q[2,0:nx,0:ny,0:nz]./ρ
@@ -171,14 +176,14 @@ function output_data(q,x,y,z,nx,ny,nz)
     p = ρ.*(γ-1).*(e-0.5.*(u.^2+v.^2+w.^2))
     c = sqrt.(γ.*p./ρ)
 
-    vtkfile = vtk_grid("output",x[0:nx,0:ny,0:nz],y[0:nx,0:ny,0:nz],z[0:nx,0:ny,0:nz])
+    vtkfile = vtk_grid(fname,x[0:nx,0:ny,0:nz],y[0:nx,0:ny,0:nz],z[0:nx,0:ny,0:nz])
     vtkfile["Velocity"] = (u,v,w)
     vtkfile["Density" ] = ρ
     vtkfile["Pressure"] = p
     vtkfile["Speed of Sound"] = c
 
     vtk_save(vtkfile)
-    return nothing
+    return vtkfile
 end
 
 #3D Weno function
@@ -520,7 +525,7 @@ end
 
 
 #Create a function for the ns3d run
-function ns3d(cfl=0.5,nx=16,ny=16,nz=16,nitermax=10000,tend=1.0)
+function ns3d(cfl=0.5,nx=16,ny=16,nz=16,nitermax=10000,tend=1.0,nout=10)
 
     #Setup required
     γ  = consts.γ
@@ -546,6 +551,16 @@ function ns3d(cfl=0.5,nx=16,ny=16,nz=16,nitermax=10000,tend=1.0)
     dElist  = append!(zeros(0),0.0)
     tlist   = append!(zeros(0),0.0)
 
+    #Initialise the PVD File
+    if (!ispath("output"))
+        mkdir("output")
+    else
+        rm("output/",recursive=true)
+    end
+    pvd = paraview_collection("output/output_all")
+    fname = "output_initial"
+    vtkfile = output_data(q,x,y,z,nx,ny,nz,fname)
+    pvd[time] = vtkfile
 
     for niter in 1:nitermax
         dt = calc_dt(cfl,γ,q,nx,ny,nz,dx,dy,dz)
@@ -574,15 +589,32 @@ function ns3d(cfl=0.5,nx=16,ny=16,nz=16,nitermax=10000,tend=1.0)
             break
         end
         tke_old = copy(tke_new)
+        if (niter%nout ==0)
+            fname = "output_"*string(Int(floor(niter/nout)))
+            vtkfile = output_data(q,x,y,z,nx,ny,nz,fname)
+            pvd[time] = vtkfile
+        end
     end
 
     #Output data
-    output_data(q,x,y,z,nx,ny,nz)
+    fname    = "output_final"
+    vtkfile  = output_data(q,x,y,z,nx,ny,nz,fname)
+    pvd[time]= vtkfile
+    vtk_save(pvd)
 
     return tkelist,dElist,tlist
 end
 #%%
-tke,dEdt,tlist = ns3d(0.5,16,16,16,1000000,20.0)
 
+#Read the input file and parameters
+
+tke,dEdt,tlist = ns3d(0.5,16,16,16,10000,10.0,10)
+npzwrite("data.npz", Dict("tkelist" => tke, "dEdt" => -dEdt, "tlist" => tlist))
+
+#%%
+vars = npzread("data.npz")
+tkelist = vars["tkelist"]
+dEdt = vars["dEdt"]
+tlist = vars["tlist"]
 p1 = plot(tlist,tke)
 p2 = plot(tlist,dEdt)
