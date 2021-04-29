@@ -2,10 +2,25 @@
 using Plots
 using OffsetArrays
 using WriteVTK
+using NPZ
+using YAML
 
 module consts
     γ = 1.4
     Ma= 0.08
+    Pr= 0.72
+    function calc_nu(T,iflag=1)
+    if (iflag==1)
+        Tref = 300
+        νref = 1.716e-5
+        S    = 110.4
+        ν    = νref*(T.^1.5)/(Tref^1.5)*(Tref+S)./(T.+S)
+        return ν
+    elseif (iflag==2)
+        Re = T
+        ν  = 1.0/Re
+    end
+    end
 end
 
 #Create the grid
@@ -15,9 +30,10 @@ function grid_init(nx,ny,nz)
     ly = 2*pi
     lz = 2*pi
 
-    dx = lx/nx
-    dy = ly/ny
-    dz = lz/nz
+    dx = lx/(nx+1)
+    dy = ly/(ny+1)
+    dz = lz/(nz+1)
+
 
     x = zeros(nx+7,ny+7,nz+7)
     y = zeros(nx+7,ny+7,nz+7)
@@ -32,9 +48,9 @@ function grid_init(nx,ny,nz)
     for k in -3:nz+3
         for j in -3:ny+3
             for i in -3:nx+3
-                x[i,j,k] = 0.0 + dx*i
-                y[i,j,k] = 0.0 + dy*j
-                z[i,j,k] = 0.0 + dz*k
+                x[i,j,k] = dx/2 + dx*i
+                y[i,j,k] = dy/2 + dy*j
+                z[i,j,k] = dz/2 + dz*k
             end
         end
     end
@@ -149,7 +165,10 @@ function expbc!(q,nx,ny,nz)
 end
 
 #Create function for writing output
-function output_data(q,x,y,z,nx,ny,nz)
+function output_data(q,x,y,z,nx,ny,nz,fname)
+
+    fname = "output/"*fname
+
     γ = consts.γ
     ρ = q[1,0:nx,0:ny,0:nz]
     u = q[2,0:nx,0:ny,0:nz]./ρ
@@ -159,14 +178,14 @@ function output_data(q,x,y,z,nx,ny,nz)
     p = ρ.*(γ-1).*(e-0.5.*(u.^2+v.^2+w.^2))
     c = sqrt.(γ.*p./ρ)
 
-    vtkfile = vtk_grid("output",x[0:nx,0:ny,0:nz],y[0:nx,0:ny,0:nz],z[0:nx,0:ny,0:nz])
+    vtkfile = vtk_grid(fname,x[0:nx,0:ny,0:nz],y[0:nx,0:ny,0:nz],z[0:nx,0:ny,0:nz])
     vtkfile["Velocity"] = (u,v,w)
     vtkfile["Density" ] = ρ
     vtkfile["Pressure"] = p
     vtkfile["Speed of Sound"] = c
 
     vtk_save(vtkfile)
-    return nothing
+    return vtkfile
 end
 
 function ns3d(cfl=0.5,nx=16,ny=16,nz=16,nitermax=10000,tend=1.0)
@@ -469,7 +488,7 @@ end
 
 #RHS calculation
 function rhsInv(nx,ny,nz,dx,dy,dz,q)
-
+    expbc!(q,nx,ny,nz)
     r = OffsetArray(zeros(5,nx+7,ny+7,nz+7),1:5,-3:nx+3,-3:ny+3,-3:nz+3)
 
     #x-direction
@@ -505,34 +524,403 @@ function rhsInv(nx,ny,nz,dx,dy,dz,q)
 
     return r
 end
+#Function find factors for derv
+function dfac(a,fac)
+    return 1.0./(a.*float(fac))
+end
+
+#Function to calc Viscous Flux
+function rhsVis(nx,ny,nz,dx,dy,dz,q,Re)
+
+    ρ = q[1,:,:,:]
+    u = q[2,:,:,:]./ρ
+    v = q[3,:,:,:]./ρ
+    w = q[4,:,:,:]./ρ
+    e = q[5,:,:,:]./ρ
+
+    #Interpolation coefficients
+    g = 1.0/180.0
+    a = 245.0
+    b =-75.0
+    c = 10.0
+
+    dx1,dx2,dx3,dx4,dx5,dx6 = dfac(dx,[1.0,2.0,3.0,4.0,5.0,6.0])
+    dy1,dy2,dy3,dy4,dy5,dy6 = dfac(dy,[1.0,2.0,3.0,4.0,5.0,6.0])
+    dz1,dz2,dz3,dz4,dz5,dz6 = dfac(dz,[1.0,2.0,3.0,4.0,5.0,6.0])
+
+    #For interpolation (FV)
+    gi = 1.0/60.0
+    ai = 37.0
+    bi =-8.0
+    ci = 1.0
+
+    #for cross derivatives
+    gd = 1.0/10.0
+    ad = 15.0
+    bd =-6.0
+    cd = 1.0
+
+    Tref = 300.0
+    Pr   = consts.Pr
+    Ma   = consts.Ma
+    γ    = consts.γ
+
+    g1 = 1.0/Re
+    g2 = (2.0/3.0)/Re
+    g3 = -1.0/(Re*Pr*(Ma^2)*(γ-1.0))
+    g4 = (γ-1)*γ*(Ma^2)
+
+    cc = 110.4/Tref
+
+    #Compute Temp and Viscocity
+    te = g4*(e - 0.5*(u.^2+v.^2+w.^2))
+    mu = (te.^(1.5))*(1.0+cc)./(te.+cc)
+
+
+    #Allocate for the flux vector
+    r = OffsetArray(zeros(5,nx+7,ny+7,nz+7),1:5,-3:nx+3,-3:ny+3,-3:nz+3)
+
+    """
+    #X-direction
+    """
+    #uy
+    cd1 = calc_coeff_cd(u,gd,ad,bd,cd,dy2,dy4,dy6,nx,ny,nz,2,1)
+    #uz
+    cd2 = calc_coeff_cd(u,gd,ad,bd,cd,dz2,dz4,dz6,nx,ny,nz,3,1)
+    #vy
+    cd3 = calc_coeff_cd(v,gd,ad,bd,cd,dy2,dy4,dy6,nx,ny,nz,2,1)
+    #wz
+    cd4 = calc_coeff_cd(w,gd,ad,bd,cd,dz2,dz4,dz6,nx,ny,nz,3,1)
+
+    #Compute vis flux at interfaces
+    #ux,vx,wx,tx
+    ux = calc_dd(u,g,a,b,c,dx1,dx3,dx5,nx,ny,nz,1)
+    vx = calc_dd(v,g,a,b,c,dx1,dx3,dx5,nx,ny,nz,1)
+    wx = calc_dd(w,g,a,b,c,dx1,dx3,dx5,nx,ny,nz,1)
+    tx = calc_dd(te,g,a,b,c,dx1,dx3,dx5,nx,ny,nz,1)
+
+    #uy,uz,vy,wz
+    uy = calc_ddi(cd1,gi,ai,bi,ci,nx,ny,nz,1)
+    uz = calc_ddi(cd2,gi,ai,bi,ci,nx,ny,nz,1)
+    vy = calc_ddi(cd3,gi,ai,bi,ci,nx,ny,nz,1)
+    wz = calc_ddi(cd4,gi,ai,bi,ci,nx,ny,nz,1)
+
+    #uu,vv,ww,mux
+    uu = calc_ddi(u,gi,ai,bi,ci,nx,ny,nz,1)
+    vv = calc_ddi(v,gi,ai,bi,ci,nx,ny,nz,1)
+    ww = calc_ddi(w,gi,ai,bi,ci,nx,ny,nz,1)
+    mux= calc_ddi(mu,gi,ai,bi,ci,nx,ny,nz,1)
+
+    txx= g2*mux.*(2.0*ux - vy - wz)
+    txy= g1*mux.*(uy + vx)
+    txz= g1*mux.*(uz + wx)
+    qx = g3*mux.*tx
+
+    vf = OffsetArray(zeros(5,nx+7,ny+7,nz+7),1:5,-3:nx+3,-3:ny+3,-3:nz+3)
+    """
+    Doubtful check indexes if doesnt work
+    """
+    vf[1,:,:,:] .= 0.0
+    vf[2,:,:,:]  = txx
+    vf[3,:,:,:]  = txy
+    vf[4,:,:,:]  = txz
+    vf[5,:,:,:]  = uu.*txx + vv.*txy + ww.*txz - qx
+
+    #Compute RHS contribution (central and FV)
+    for i in 0:nx
+        r[:,i,:,:] = (vf[:,i,:,:]-vf[:,i-1,:,:])./dx
+    end
+    #Deallocate
+    cd1,cd2,cd3,cd4 = nothing,nothing,nothing,nothing
+    ux,vx,wx,tx     = nothing,nothing,nothing,nothing
+    uy,uz,vy,wz     = nothing,nothing,nothing,nothing
+    uu,vv,ww,mux    = nothing,nothing,nothing,nothing
+    txx,txy,txz,qx  = nothing,nothing,nothing,nothing
+    vf              = nothing
+
+    """
+    #Y-direction
+    """
+
+    #vx
+    cd1 = calc_coeff_cd(v,gd,ad,bd,cd,dx2,dx4,dx6,nx,ny,nz,1,2)
+    #vz
+    cd2 = calc_coeff_cd(v,gd,ad,bd,cd,dz2,dz4,dz6,nx,ny,nz,3,2)
+    #ux
+    cd3 = calc_coeff_cd(u,gd,ad,bd,cd,dx2,dx4,dx6,nx,ny,nz,1,2)
+    #wz
+    cd4 = calc_coeff_cd(w,gd,ad,bd,cd,dz2,dz4,dz6,nx,ny,nz,3,2)
+
+    #Compute vis flux at interfaces
+    #uy,vy,wy,ty
+    uy = calc_dd(u,g,a,b,c,dy1,dy3,dy5,nx,ny,nz,2)
+    vy = calc_dd(v,g,a,b,c,dy1,dy3,dy5,nx,ny,nz,2)
+    wy = calc_dd(w,g,a,b,c,dy1,dy3,dy5,nx,ny,nz,2)
+    ty = calc_dd(te,g,a,b,c,dy1,dy3,dy5,nx,ny,nz,2)
+
+    #vx,vz,ux,wz
+    vx = calc_ddi(cd1,gi,ai,bi,ci,nx,ny,nz,2)
+    vz = calc_ddi(cd2,gi,ai,bi,ci,nx,ny,nz,2)
+    ux = calc_ddi(cd3,gi,ai,bi,ci,nx,ny,nz,2)
+    wz = calc_ddi(cd4,gi,ai,bi,ci,nx,ny,nz,2)
+
+    #uu,vv,ww,muy
+    uu = calc_ddi(u,gi,ai,bi,ci,nx,ny,nz,2)
+    vv = calc_ddi(v,gi,ai,bi,ci,nx,ny,nz,2)
+    ww = calc_ddi(w,gi,ai,bi,ci,nx,ny,nz,2)
+    muy= calc_ddi(mu,gi,ai,bi,ci,nx,ny,nz,2)
+
+    #txy,tyy,tyz,qy
+    txy= g1*muy.*(uy+vx)
+    tyy= g2*muy.*(2.0*vy - ux - wz)
+    tyz= g1*muy.*(vz + wy)
+    qy = g3*muy.*ty
+
+    vg = OffsetArray(zeros(5,nx+7,ny+7,nz+7),1:5,-3:nx+3,-3:ny+3,-3:nz+3)
+    """
+    Doubtful check indexes if doesnt work
+    """
+    vg[1,:,:,:] .= 0.0
+    vg[2,:,:,:]  = txy
+    vg[3,:,:,:]  = tyy
+    vg[4,:,:,:]  = tyz
+    vg[5,:,:,:]  = uu.*txy + vv.*tyy + ww.*tyz - qy
+
+    #Compute RHS contribution (central and FV)
+    for j in 0:ny
+        r[:,:,j,:] = r[:,:,j,:] + (vg[:,:,j,:]-vg[:,:,j-1,:])./dy
+    end
+    #Deallocate
+    cd1,cd2,cd3,cd4 = nothing,nothing,nothing,nothing
+    uy,vy,wy,ty     = nothing,nothing,nothing,nothing
+    vx,vz,ux,wz     = nothing,nothing,nothing,nothing
+    uu,vv,ww,muy   = nothing,nothing,nothing,nothing
+    txy,tyy,tyz,qy  = nothing,nothing,nothing,nothing
+    vg              = nothing
+
+    """
+    #Z-direction
+    """
+
+    #wx
+    cd1 = calc_coeff_cd(w,gd,ad,bd,cd,dx2,dx4,dx6,nx,ny,nz,1,3)
+    #wy
+    cd2 = calc_coeff_cd(w,gd,ad,bd,cd,dz2,dz4,dz6,nx,ny,nz,2,3)
+    #ux
+    cd3 = calc_coeff_cd(u,gd,ad,bd,cd,dx2,dx4,dx6,nx,ny,nz,1,3)
+    #vy
+    cd4 = calc_coeff_cd(v,gd,ad,bd,cd,dz2,dz4,dz6,nx,ny,nz,2,3)
+
+    #Compute vis flux at interfaces
+    #uz,vz,wz,tz
+    uz = calc_dd(u,g,a,b,c,dy1,dy3,dy5,nx,ny,nz,3)
+    vz = calc_dd(v,g,a,b,c,dy1,dy3,dy5,nx,ny,nz,3)
+    wz = calc_dd(w,g,a,b,c,dy1,dy3,dy5,nx,ny,nz,3)
+    tz = calc_dd(te,g,a,b,c,dy1,dy3,dy5,nx,ny,nz,3)
+
+    #wx,wy,ux,vy
+    wx = calc_dd(cd1,gi,ai,bi,ci,nx,ny,nz,3)
+    wy = calc_dd(cd2,gi,ai,bi,ci,nx,ny,nz,3)
+    ux = calc_dd(cd3,gi,ai,bi,ci,nx,ny,nz,3)
+    vy = calc_dd(cd4,gi,ai,bi,ci,nx,ny,nz,3)
+
+    #uu,vv,ww,muz
+    uu = calc_ddi(u,gi,ai,bi,ci,nx,ny,nz,3)
+    vv = calc_ddi(v,gi,ai,bi,ci,nx,ny,nz,3)
+    ww = calc_ddi(w,gi,ai,bi,ci,nx,ny,nz,3)
+    muz= calc_ddi(mu,gi,ai,bi,ci,nx,ny,nz,3)
+
+    #txz,tyz,tzz,qz
+    txz= g1*muz.*(uz+wx)
+    tyz= g1*muz.*(vz+wy)
+    tzz= g2*muz.*(2.0*wz - ux - vy)
+    qz = g3*muz.*tz
+
+    vh = OffsetArray(zeros(5,nx+7,ny+7,nz+7),1:5,-3:nx+3,-3:ny+3,-3:nz+3)
+    """
+    Doubtful check indexes if doesnt work
+    """
+    vh[1,:,:,:] .= 0.0
+    vh[2,:,:,:]  = txz
+    vh[3,:,:,:]  = tyz
+    vh[4,:,:,:]  = tzz
+    vh[5,:,:,:]  = uu.*txz + vv.*tyz + ww.*tzz - qz
+
+    #Compute RHS contribution (central and FV)
+    for k in 0:nz
+        r[:,:,:,k] = r[:,:,:,k] + (vh[:,:,:,k]-vh[:,:,:,k-1])./dz
+    end
+    #Deallocate
+    cd1,cd2,cd3,cd4 = nothing,nothing,nothing,nothing
+    uz,vz,wz,tz     = nothing,nothing,nothing,nothing
+    wx,wy,ux,vy     = nothing,nothing,nothing,nothing
+    uu,vv,ww,muz    = nothing,nothing,nothing,nothing
+    txz,tyz,tzz,qz  = nothing,nothing,nothing,nothing
+    vh              = nothing
+
+    return r
+end
+
+#Function to calculate value at interface
+function calc_ddi(u,g,a,b,c,nx,ny,nz,axis)
+    ddi = OffsetArray(zeros(nx+7,ny+7,nz+7),-3:nx+3,-3:ny+3,-3:nz+3)
+    if (axis==1)
+        for k in 0:nz
+        for j in 0:ny
+        for i in -1:nx
+            ddi[i,j,k] =  g*(a*( u[i+1,j,k] + u[i,j,k])   +
+                             b*( u[i+2,j,k] + u[i-1,j,k]) +
+                             c*( u[i+3,j,k] + u[i-2,j,k]) )
+        end
+        end
+        end
+    elseif (axis==2)
+        for k in 0:nz
+        for j in -1:ny
+        for i in 0:nx
+            ddi[i,j,k] =  g*(a*( u[i,j+1,k] + u[i,j,k])   +
+                             b*( u[i,j+2,k] + u[i,j-1,k]) +
+                             c*( u[i,j+3,k] + u[i,j-2,k]) )
+        end
+        end
+        end
+    elseif (axis==3)
+        for k in -1:nz
+        for j in 0:ny
+        for i in 0:nx
+            ddi[i,j,k] =  g*(a*( u[i,j,k+1] + u[i,j,k])   +
+                             b*( u[i,j,k+2] + u[i,j,k-1]) +
+                             c*( u[i,j,k+3] + u[i,j,k-2]) )
+        end
+        end
+        end
+    else
+        print("Error in Axes Index at calc_cd")
+    end
+
+    return ddi
+end
+
+#Function to calculate the derivates
+function calc_dd(u,g,a,b,c,d1,d2,d3,nx,ny,nz,axis)
+    dd = OffsetArray(zeros(nx+7,ny+7,nz+7),-3:nx+3,-3:ny+3,-3:nz+3)
+    if (axis==1)
+        for k in 0:nz
+        for j in 0:ny
+        for i in -1:nx
+            dd[i,j,k] =  g*(a*d1*( u[i+1,j,k] - u[i,j,k]) +
+                            b*d2*( u[i+2,j,k] - u[i-1,j,k]) +
+                            c*d3*( u[i+3,j,k] - u[i-2,j,k]) )
+        end
+        end
+        end
+    elseif (axis==2)
+        for k in 0:nz
+        for j in -1:ny
+        for i in 0:nx
+            dd[i,j,k] =  g*(a*d1*( u[i,j+1,k] - u[i,j,k]) +
+                            b*d2*( u[i,j+2,k] - u[i,j-1,k]) +
+                            c*d3*( u[i,j+3,k] - u[i,j-2,k]) )
+        end
+        end
+        end
+    elseif (axis==3)
+        for k in -1:nz
+        for j in 0:ny
+        for i in 0:nx
+            dd[i,j,k] =  g*(a*d1*( u[i,j,k+1] - u[i,j,k]) +
+                            b*d2*( u[i,j,k+2] - u[i,j,k-1]) +
+                            c*d3*( u[i,j,k+3] - u[i,j,k-2]) )
+        end
+        end
+        end
+    else
+        print("Error in Axes Index at calc_cd")
+    end
+
+    return dd
+end
+
+#Function to calculate the coefficients for cross derivates
+function calc_coeff_cd(u,g,a,b,c,d1,d2,d3,nx,ny,nz,axis,flxdir)
+    cd = OffsetArray(zeros(nx+7,ny+7,nz+7),-3:nx+3,-3:ny+3,-3:nz+3)
+    if (flxdir==1)
+        nxb,nxe,nyb,nye,nzb,nze = -3,nx+3,0,ny,0,nz
+    elseif (flxdir==2)
+        nxb,nxe,nyb,nye,nzb,nze = 0,nx,-3,ny+3,0,nz
+    elseif (flxdir==3)
+        nxb,nxe,nyb,nye,nzb,nze = 0,nx,0,ny,-3,nz+3
+    end
+
+    if (axis==1)
+        for k in nzb:nze
+        for j in nyb:nye
+        for i in nxb:nxe
+            cd[i,j,k] =  g*(a*d1*( u[i+1,j,k] - u[i-1,j,k]) +
+                            b*d2*( u[i+2,j,k] - u[i-2,j,k]) +
+                            c*d3*( u[i+3,j,k] - u[i-3,j,k]) )
+        end
+        end
+        end
+    elseif (axis==2)
+        for k in nzb:nze
+        for j in nyb:nye
+        for i in nxb:nxe
+            cd[i,j,k] =  g*(a*d1*( u[i,j+1,k] - u[i,j-1,k]) +
+                            b*d2*( u[i,j+2,k] - u[i,j-2,k]) +
+                            c*d3*( u[i,j+3,k] - u[i,j-3,k]) )
+        end
+        end
+        end
+    elseif (axis==3)
+        for k in nzb:nze
+        for j in nyb:nye
+        for i in nxb:nxe
+            cd[i,j,k] =  g*(a*d1*( u[i,j,k+1] - u[i,j,k-1]) +
+                            b*d2*( u[i,j,k+2] - u[i,j,k-2]) +
+                            c*d3*( u[i,j,k+3] - u[i,j,k-3]) )
+        end
+        end
+        end
+    else
+        print("Error in Axes Index at calc_cd")
+    end
+
+    return cd
+end
 
 #RHS
-function rhs(nx,ny,nz,dx,dy,dz,q)
+function rhs(nx,ny,nz,dx,dy,dz,q,ivis,Re)
     ri = rhsInv(nx,ny,nz,dx,dy,dz,q)
-    #rv = rhsVis(nx,ny,nz,dx,dy,dz,q)
-    r  = ri #+rv
+    if (ivis==1)
+        rv = rhsVis(nx,ny,nz,dx,dy,dz,q,Re)
+        r  = ri + rv
+    else
+        r  = ri
+    end
+
     return r
 end
 
 >>>>>>> testing
 #Time stepping RK3
-function tvdrk3(nx,ny,nz,dx,dy,dz,q,dt)
+function tvdrk3(nx,ny,nz,dx,dy,dz,q,dt,ivis,Re)
     qq = copy(q)
     qn = copy(q)
 
     #First step
     expbc!(q,nx,ny,nz)
-    r  = rhs(nx,ny,nz,dx,dy,dz,q)
+    r  = rhs(nx,ny,nz,dx,dy,dz,q,ivis,Re)
     qq = q + dt*r
 
     #Second step
     expbc!(qq,nx,ny,nz)
-    r  = rhs(nx,ny,nz,dx,dy,dz,qq)
+    r  = rhs(nx,ny,nz,dx,dy,dz,qq,ivis,Re)
     qq = 0.75*q + 0.25*qq + 0.25*dt*r
 
     #Third Step
     expbc!(qq,nx,ny,nz)
-    r  = rhs(nx,ny,nz,dx,dy,dz,qq)
+    r  = rhs(nx,ny,nz,dx,dy,dz,qq,ivis,Re)
     qn = 1/3*q + 2/3*qq + 2/3*dt*r
 
     return qn
@@ -545,23 +933,29 @@ function calc_tke(q,nx,ny,nz)
     v = q[3,0:nx,0:ny,0:nz]./ρ
     w = q[4,0:nx,0:ny,0:nz]./ρ
 
-    tke = sum(0.5*(u.^2 + v.^2 + w.^2))/((nx+1)*(ny+1)*(nz+1))
+    tke = sum(0.5*(u.^2 + v.^2 + w.^2))./((nx+1)*(ny+1)*(nz+1))
     return tke
 end
 
+
 #Create a function for the ns3d run
-function ns3d(cfl=0.5,nx=16,ny=16,nz=16,nitermax=10000,tend=1.0)
+function ns3d(cfl=0.5,nx=16,ny=16,nz=16,nitermax=10000,tend=1.0,nout=10,ivis=0,Re=1600)
 
     #Setup required
     γ  = consts.γ
     Ma = 0.08
     time = 0.0
 
+    nx = nx - 1
+    ny = ny - 1
+    nz = nz - 1
+
     #Create the grid
     x,y,z,dx,dy,dz = grid_init(nx,ny,nz)
 
     #Initialise
     q,pq_init = init_3d(Ma,x,y,z,nx,ny,nz)
+    @info calc_tke(q,nx,ny,nz)
     qnew = zeros(5,nx+7,ny+7,nz+7)
     qnew = OffsetArray(qnew,1:5,-3:nx+3,-3:ny+3,-3:nz+3)
 
@@ -576,16 +970,27 @@ function ns3d(cfl=0.5,nx=16,ny=16,nz=16,nitermax=10000,tend=1.0)
     dElist  = append!(zeros(0),0.0)
     tlist   = append!(zeros(0),0.0)
 
+    #Initialise the PVD File
+    if (!ispath("output"))
+        mkdir("output")
+    else
+        rm("output/",recursive=true)
+        mkdir("output")
+    end
+    pvd = paraview_collection("output/output_all")
+    fname = "output_initial"
+    vtkfile = output_data(q,x,y,z,nx,ny,nz,fname)
+    pvd[time] = vtkfile
 
     for niter in 1:nitermax
         dt = calc_dt(cfl,γ,q,nx,ny,nz,dx,dy,dz)
         if time+dt > tend
             dt = tend-time
         end
-
+        #tke_new = calc_tke(q,nx,ny,nz)
         expbc!(q,nx,ny,nz)
 
-        qnew = tvdrk3(nx,ny,nz,dx,dy,dz,q,dt)
+        qnew = tvdrk3(nx,ny,nz,dx,dy,dz,q,dt,ivis,Re)
 
         expbc!(qnew,nx,ny,nz)
 
@@ -604,15 +1009,48 @@ function ns3d(cfl=0.5,nx=16,ny=16,nz=16,nitermax=10000,tend=1.0)
             break
         end
         tke_old = copy(tke_new)
+        if (niter%nout ==0)
+            fname = "output_"*string(Int(floor(niter/nout)))
+            vtkfile = output_data(q,x,y,z,nx,ny,nz,fname)
+            pvd[time] = vtkfile
+        end
     end
 
     #Output data
-    output_data(q,x,y,z,nx,ny,nz)
+    fname    = "output_final"
+    vtkfile  = output_data(q,x,y,z,nx,ny,nz,fname)
+    pvd[time]= vtkfile
+    vtk_save(pvd)
 
     return tkelist,dElist,tlist
 end
 #%%
-tke,dEdt,tlist = ns3d(0.5,16,16,16,1000000,20.0)
+inp_data = YAML.load_file("input.yaml")
 
-p1 = plot(tlist,tke)
-p2 = plot(tlist,dEdt)
+#Read the input file and parameters
+#Runtime parameters
+nitermax= inp_data["nitermax"]
+nx      = inp_data["nx"]
+ny      = inp_data["ny"]
+nz      = inp_data["nz"]
+cfl     = inp_data["cfl"]
+Re      = inp_data["Re"]
+tend    = inp_data["tend"]
+nplot   = inp_data["nplot"]
+
+#Specific Flags
+ivis = inp_data["ivis"]
+ihpc = inp_data["ihpc"]
+tke,dEdt,tlist = ns3d(cfl,nx,nx,nx,nitermax,tend,nplot,ivis,Re)
+npzwrite("data.npz", Dict("tkelist" => tke, "dEdt" => -dEdt, "tlist" => tlist))
+
+#%%
+# Operations for plotting only on local PC
+if (ihpc==0)
+    vars = npzread("data.npz")
+    tkelist = vars["tkelist"]
+    dEdt = vars["dEdt"]
+    tlist = vars["tlist"]
+    p1 = plot(tlist,tke)
+    p2 = plot(tlist,dEdt)
+end
