@@ -1,12 +1,12 @@
 #Input File for 3D NS
-nitermax: 10000000
+nitermax: 10000000000
 nx   : 16
 ny   : 16
 nz   : 16
 cfl  : 0.6
 Re   : 1600.0
 nplot: 10
-tend : 10.0
+tend : 20.0
 
 #Specific Flags
 ivis: 1

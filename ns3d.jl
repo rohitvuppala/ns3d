@@ -527,6 +527,7 @@ function rhsVis(nx,ny,nz,dx,dy,dz,q,Re)
     te = g4*(e - 0.5*(u.^2+v.^2+w.^2))
     mu = (te.^(1.5))*(1.0+cc)./(te.+cc)
 
+
     #Allocate for the flux vector
     r = OffsetArray(zeros(5,nx+7,ny+7,nz+7),1:5,-3:nx+3,-3:ny+3,-3:nz+3)
 
@@ -534,13 +535,13 @@ function rhsVis(nx,ny,nz,dx,dy,dz,q,Re)
     #X-direction
     """
     #uy
-    cd1 = calc_coeff_cdx(u,gd,ad,bd,cd,dy2,dy4,dy6,nx,ny,nz,2,1)
+    cd1 = calc_coeff_cd(u,gd,ad,bd,cd,dy2,dy4,dy6,nx,ny,nz,2,1)
     #uz
-    cd2 = calc_coeff_cdx(u,gd,ad,bd,cd,dz2,dz4,dz6,nx,ny,nz,3,1)
+    cd2 = calc_coeff_cd(u,gd,ad,bd,cd,dz2,dz4,dz6,nx,ny,nz,3,1)
     #vy
-    cd3 = calc_coeff_cdx(v,gd,ad,bd,cd,dy2,dy4,dy6,nx,ny,nz,2,1)
+    cd3 = calc_coeff_cd(v,gd,ad,bd,cd,dy2,dy4,dy6,nx,ny,nz,2,1)
     #wz
-    cd4 = calc_coeff_cdx(w,gd,ad,bd,cd,dz2,dz4,dz6,nx,ny,nz,3,1)
+    cd4 = calc_coeff_cd(w,gd,ad,bd,cd,dz2,dz4,dz6,nx,ny,nz,3,1)
 
     #Compute vis flux at interfaces
     #ux,vx,wx,tx
@@ -593,13 +594,13 @@ function rhsVis(nx,ny,nz,dx,dy,dz,q,Re)
     """
 
     #vx
-    cd1 = calc_coeff_cdx(v,gd,ad,bd,cd,dx2,dx4,dx6,nx,ny,nz,1,2)
+    cd1 = calc_coeff_cd(v,gd,ad,bd,cd,dx2,dx4,dx6,nx,ny,nz,1,2)
     #vz
-    cd2 = calc_coeff_cdx(v,gd,ad,bd,cd,dz2,dz4,dz6,nx,ny,nz,3,2)
+    cd2 = calc_coeff_cd(v,gd,ad,bd,cd,dz2,dz4,dz6,nx,ny,nz,3,2)
     #ux
-    cd3 = calc_coeff_cdx(u,gd,ad,bd,cd,dx2,dx4,dx6,nx,ny,nz,1,2)
+    cd3 = calc_coeff_cd(u,gd,ad,bd,cd,dx2,dx4,dx6,nx,ny,nz,1,2)
     #wz
-    cd4 = calc_coeff_cdx(w,gd,ad,bd,cd,dz2,dz4,dz6,nx,ny,nz,3,2)
+    cd4 = calc_coeff_cd(w,gd,ad,bd,cd,dz2,dz4,dz6,nx,ny,nz,3,2)
 
     #Compute vis flux at interfaces
     #uy,vy,wy,ty
@@ -618,7 +619,7 @@ function rhsVis(nx,ny,nz,dx,dy,dz,q,Re)
     uu = calc_ddi(u,gi,ai,bi,ci,nx,ny,nz,2)
     vv = calc_ddi(v,gi,ai,bi,ci,nx,ny,nz,2)
     ww = calc_ddi(w,gi,ai,bi,ci,nx,ny,nz,2)
-    mux= calc_ddi(mu,gi,ai,bi,ci,nx,ny,nz,2)
+    muy= calc_ddi(mu,gi,ai,bi,ci,nx,ny,nz,2)
 
     #txy,tyy,tyz,qy
     txy= g1*muy.*(uy+vx)
@@ -653,13 +654,13 @@ function rhsVis(nx,ny,nz,dx,dy,dz,q,Re)
     """
 
     #wx
-    cd1 = calc_coeff_cdx(w,gd,ad,bd,cd,dx2,dx4,dx6,nx,ny,nz,1,3)
+    cd1 = calc_coeff_cd(w,gd,ad,bd,cd,dx2,dx4,dx6,nx,ny,nz,1,3)
     #wy
-    cd2 = calc_coeff_cdx(w,gd,ad,bd,cd,dz2,dz4,dz6,nx,ny,nz,2,3)
+    cd2 = calc_coeff_cd(w,gd,ad,bd,cd,dz2,dz4,dz6,nx,ny,nz,2,3)
     #ux
-    cd3 = calc_coeff_cdx(u,gd,ad,bd,cd,dx2,dx4,dx6,nx,ny,nz,1,3)
+    cd3 = calc_coeff_cd(u,gd,ad,bd,cd,dx2,dx4,dx6,nx,ny,nz,1,3)
     #vy
-    cd4 = calc_coeff_cdx(v,gd,ad,bd,cd,dz2,dz4,dz6,nx,ny,nz,2,3)
+    cd4 = calc_coeff_cd(v,gd,ad,bd,cd,dz2,dz4,dz6,nx,ny,nz,2,3)
 
     #Compute vis flux at interfaces
     #uz,vz,wz,tz
@@ -712,7 +713,7 @@ function rhsVis(nx,ny,nz,dx,dy,dz,q,Re)
 end
 
 #Function to calculate value at interface
-function calc_dd(u,g,a,b,c,nx,ny,nz,axis)
+function calc_ddi(u,g,a,b,c,nx,ny,nz,axis)
     ddi = OffsetArray(zeros(nx+7,ny+7,nz+7),-3:nx+3,-3:ny+3,-3:nz+3)
     if (axis==1)
         for k in 0:nz
@@ -990,7 +991,7 @@ nplot   = inp_data["nplot"]
 #Specific Flags
 ivis = inp_data["ivis"]
 ihpc = inp_data["ihpc"]
-tke,dEdt,tlist = ns3d(cfl,nx,nx,nx,nitermax,tend,nplot)
+tke,dEdt,tlist = ns3d(cfl,nx,nx,nx,nitermax,tend,nplot,ivis,Re)
 npzwrite("data.npz", Dict("tkelist" => tke, "dEdt" => -dEdt, "tlist" => tlist))
 
 #%%
