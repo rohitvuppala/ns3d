@@ -4,6 +4,7 @@ using OffsetArrays
 using WriteVTK
 using NPZ
 using YAML
+using Printf
 
 module consts
     γ = 1.4
@@ -932,6 +933,9 @@ function ns3d(cfl=0.5,nx=16,ny=16,nz=16,nitermax=10000,tend=1.0,nout=10,ivis=0,R
     vtkfile = output_data(q,x,y,z,nx,ny,nz,fname)
     pvd[time] = vtkfile
 
+    #Open log file for residual
+    io1 = open("residual.log","w")
+    @printf(io1,"   iter \t dt \t time \n")
     for niter in 1:nitermax
         dt = calc_dt(cfl,γ,q,nx,ny,nz,dx,dy,dz)
         if time+dt > tend
@@ -947,7 +951,9 @@ function ns3d(cfl=0.5,nx=16,ny=16,nz=16,nitermax=10000,tend=1.0,nout=10,ivis=0,R
         q = copy(qnew)
         time = time + dt
 
-        @info niter,time,dt
+        @info niter,dt,time
+        @printf(io1," %8i  %.3e %.3e \n",niter,dt,time)
+        flush(io1)
 
         tke_new = calc_tke(q,nx,ny,nz)
         dEdt    = (tke_new - tke_old)/dt
@@ -971,6 +977,9 @@ function ns3d(cfl=0.5,nx=16,ny=16,nz=16,nitermax=10000,tend=1.0,nout=10,ivis=0,R
     vtkfile  = output_data(q,x,y,z,nx,ny,nz,fname)
     pvd[time]= vtkfile
     vtk_save(pvd)
+
+    #Close any opened files
+    close(io1)
 
     return tkelist,dElist,tlist
 end
