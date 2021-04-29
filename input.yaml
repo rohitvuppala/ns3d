@@ -1,5 +1,5 @@
 #Input File for 3D NS
-nitermax: 10000000000
+nitermax: 1000000000
 nx   : 16
 ny   : 16
 nz   : 16

@@ -670,10 +670,10 @@ function rhsVis(nx,ny,nz,dx,dy,dz,q,Re)
     tz = calc_dd(te,g,a,b,c,dy1,dy3,dy5,nx,ny,nz,3)
 
     #wx,wy,ux,vy
-    wx = calc_dd(cd1,gi,ai,bi,ci,nx,ny,nz,3)
-    wy = calc_dd(cd2,gi,ai,bi,ci,nx,ny,nz,3)
-    ux = calc_dd(cd3,gi,ai,bi,ci,nx,ny,nz,3)
-    vy = calc_dd(cd4,gi,ai,bi,ci,nx,ny,nz,3)
+    wx = calc_ddi(cd1,gi,ai,bi,ci,nx,ny,nz,3)
+    wy = calc_ddi(cd2,gi,ai,bi,ci,nx,ny,nz,3)
+    ux = calc_ddi(cd3,gi,ai,bi,ci,nx,ny,nz,3)
+    vy = calc_ddi(cd4,gi,ai,bi,ci,nx,ny,nz,3)
 
     #uu,vv,ww,muz
     uu = calc_ddi(u,gi,ai,bi,ci,nx,ny,nz,3)
