@@ -1002,7 +1002,9 @@ ivis = inp_data["ivis"]
 ihpc = inp_data["ihpc"]
 tke,dEdt,tlist = ns3d(cfl,nx,nx,nx,nitermax,tend,nplot,ivis,Re)
 npzwrite("data.npz", Dict("tkelist" => tke, "dEdt" => -dEdt, "tlist" => tlist))
-
+fname = "data_fields.npz"
+#Save NPZ files also
+npzwrite(fname, Dict("Velocity" => (u,v,w), "Density" => ρ, "Pressure" => p, "c" => c))
 #%%
 # Operations for plotting only on local PC
 if (ihpc==0)
