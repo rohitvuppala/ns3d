@@ -981,6 +981,20 @@ function ns3d(cfl=0.5,nx=16,ny=16,nz=16,nitermax=10000,tend=1.0,nout=10,ivis=0,R
     #Close any opened files
     close(io1)
 
+    #Save NPZ file fpr the fields also
+    fname = "data_fields.npz"
+
+    γ = consts.γ
+    ρ = q[1,:,:,:]
+    u = q[2,:,:,:]./ρ
+    v = q[3,:,:,:]./ρ
+    w = q[4,:,:,:]./ρ
+    e = q[5,:,:,:]./ρ
+    p = (γ-1)*(q[5,:,:,:] - 0.5*ρ.*(u.^2+v.^2+w.^2))
+    c = sqrt.(γ*p./ρ)
+
+    npzwrite(fname, Dict("u" => u,"v" => v,"w" => w, "Density" => ρ, "Pressure" => p, "c" => c))
+
     return tkelist,dElist,tlist
 end
 #%%
@@ -1002,9 +1016,7 @@ ivis = inp_data["ivis"]
 ihpc = inp_data["ihpc"]
 tke,dEdt,tlist = ns3d(cfl,nx,nx,nx,nitermax,tend,nplot,ivis,Re)
 npzwrite("data.npz", Dict("tkelist" => tke, "dEdt" => -dEdt, "tlist" => tlist))
-fname = "data_fields.npz"
-#Save NPZ files also
-npzwrite(fname, Dict("Velocity" => (u,v,w), "Density" => ρ, "Pressure" => p, "c" => c))
+
 #%%
 # Operations for plotting only on local PC
 if (ihpc==0)
@@ -1013,5 +1025,5 @@ if (ihpc==0)
     dEdt = vars["dEdt"]
     tlist = vars["tlist"]
     p1 = plot(tlist,tke)
-    p2 = plot(tlist,dEdt)
+    p2 = plot(tlist[2:lastindex(tlist)],dEdt[2:lastindex(dEdt)])
 end
