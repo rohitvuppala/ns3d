@@ -189,59 +189,7 @@ function output_data(q,x,y,z,nx,ny,nz,fname)
     return vtkfile
 end
 
-<<<<<<< HEAD
-function ns3d(cfl=0.5,nx=16,ny=16,nz=16,nitermax=10000,tend=1.0)
-
-    #Setup required
-    γ  = consts.γ
-    Ma = 0.08
-    time = 0.0
-
-    #Create the grid
-    x,y,z,dx,dy,dz = grid_init(nx,ny,nz)
-
-    #Initialise
-    q,pq_init = init_3d(Ma,x,y,z,nx,ny,nz)
-    qnew = zeros(5,nx+7,ny+7,nz+7)
-    qnew = OffsetArray(qnew,1:5,-3:nx+3,-3:ny+3,-3:nz+3)
-
-    #Calc_dt
-    dt = calc_dt(cfl,γ,q,nx,ny,nz,dx,dy,dz)
-
-    #Boundary Conditions
-    expbc!(q,nx,ny,nz)
-
-    for niter in 1:nitermax
-        dt = calc_dt(cfl,γ,q,nx,ny,nz,dx,dy,dz)
-        if time+dt > tend
-            dt = tend-time
-        end
-
-        expbc!(q,nx,ny,nz)
-
-        qnew = tvdrk3(nx,ny,nz,dx,dy,dz,q,dt)
-
-        expbc!(qnew,nx,ny,nz)
-
-        q = copy(qnew)
-        time = time + dt
-
-        @info niter,time,dt
-        if (time >= tend)
-            break
-        end
-    end
-
-    #Output data
-    output_data(q,x,y,z,nx,ny,nz)
-
-    return nothing
-end
-
-=======
-=======
 #3D Fifth-Order Upwind
-#3D Weno function
 function upwind5(nx,ny,nz,q,axis)
 
     #Swap axes as required NOTE: First index stores variables
@@ -328,7 +276,6 @@ function upwind5(nx,ny,nz,q,axis)
     return qL,qR
 end
 
->>>>>>> testing
 #3D Weno function
 function weno5(nx,ny,nz,q,axis)
 
@@ -1005,7 +952,6 @@ function rhs(nx,ny,nz,dx,dy,dz,q,ivis,iflx,Re)
     return r
 end
 
->>>>>>> testing
 #Time stepping RK3
 function tvdrk3(nx,ny,nz,dx,dy,dz,q,dt,ivis,iflx,Re)
     qq = copy(q)
