@@ -189,6 +189,94 @@ function output_data(q,x,y,z,nx,ny,nz,fname)
     return vtkfile
 end
 
+#3D Fifth-Order Upwind
+#3D Weno function
+function upwind5(nx,ny,nz,q,axis)
+
+    #Swap axes as required NOTE: First index stores variables
+    if (axis==1)
+        #q = copy(q)
+        n1,n2,n3 = nx,ny,nz
+    elseif (axis==2)
+        q = permutedims(q,[1,3,2,4])
+        n1,n2,n3 = ny,nx,nz
+    elseif (axis==3)
+        q = permutedims(q,[1,4,3,2])
+        n1,n2,n3 = nz,ny,nx
+    else
+        println("Error at Axes Upwind")
+    end
+
+    #qL and qR
+    qL = OffsetArray(zeros(5,n1+7,n2+7,n3+7),1:5,-3:n1+3,-3:n2+3,-3:n3+3)
+    qR = OffsetArray(zeros(5,n1+7,n2+7,n3+7),1:5,-3:n1+3,-3:n2+3,-3:n3+3)
+
+    eps  = 1e-6
+    pweno= 2
+
+    c0 = 1/6
+    c1 = 13/12
+    c2 = 1/4
+
+    d0 = 1/10
+    d1 = 3/5
+    d2 = 3/10
+
+    #Compute smoothness
+    β0 = OffsetArray(zeros(5,n1+7,n2+7,n3+7),1:5,-3:n1+3,-3:n2+3,-3:n3+3)
+    β1 = OffsetArray(zeros(5,n1+7,n2+7,n3+7),1:5,-3:n1+3,-3:n2+3,-3:n3+3)
+    β2 = OffsetArray(zeros(5,n1+7,n2+7,n3+7),1:5,-3:n1+3,-3:n2+3,-3:n3+3)
+
+    for i in -1:n1+1
+        β0[:,i,:,:] = c1*(q[:,i-2,:,:]-2*q[:,i-1,:,:]+q[:,i,:,:]).^2 +
+                      c2*(q[:,i-2,:,:]-4*q[:,i-1,:,:]+3*q[:,i,:,:]).^2
+        β1[:,i,:,:] = c1*(q[:,i-1,:,:]-2*q[:,i,:,:]+q[:,i+1,:,:]).^2 +
+                      c2*(q[:,i-1,:,:]-q[:,i+1,:,:]).^2
+        β2[:,i,:,:] = c1*(q[:,i,:,:]-2*q[:,i+1,:,:]+q[:,i+2,:,:]).^2 +
+                      c2*(3*q[:,i,:,:]-4*q[:,i+1,:,:]+q[:,i+2,:,:]).^2
+    end
+
+    w0 = 1/30
+    w1 =-13/60
+    w2 = 47/60
+    w3 = 27/60
+    w4 =- 1/20
+
+    for i in -1:n1
+
+        #Positive reconstruction
+        qL[:,i,:,:] = w0.*q[:,i-2,:,:] +
+                      w1.*q[:,i-1,:,:] +
+                      w2.*q[:,i,:,:]   +
+                      w3.*q[:,i+1,:,:] +
+                      w4.*q[:,i+2,:,:]
+
+
+        #Negative reconstruction
+        qR[:,i,:,:] = w0.*q[:,i+3,:,:] +
+                      w1.*q[:,i+2,:,:] +
+                      w2.*q[:,i+1,:,:] +
+                      w3.*q[:,i,:,:]   +
+                      w4.*q[:,i-1,:,:]
+
+    end
+
+    #Swap axes as required NOTE: First index stores variables
+    if (axis==1)
+        #Nothing required
+    elseif (axis==2)
+        qL = permutedims(qL,[1,3,2,4])
+        qR = permutedims(qR,[1,3,2,4])
+    elseif (axis==3)
+        qL = permutedims(qL,[1,4,3,2])
+        qR = permutedims(qR,[1,4,3,2])
+    else
+        println("Error at Axes Upwind")
+    end
+
+    return qL,qR
+end
+
 #3D Weno function
 function weno5(nx,ny,nz,q,axis)
 
@@ -439,28 +527,39 @@ function rusanov_3d(q,qL,fluxL,qR,fluxR,nx,ny,nz,axis)
 end
 
 #RHS calculation
-function rhsInv(nx,ny,nz,dx,dy,dz,q)
+function rhsInv(nx,ny,nz,dx,dy,dz,q,iflx)
     expbc!(q,nx,ny,nz)
     r = OffsetArray(zeros(5,nx+7,ny+7,nz+7),1:5,-3:nx+3,-3:ny+3,-3:nz+3)
 
     #x-direction
-    qLx,qRx = weno5(nx,ny,nz,q,1)
+    if (iflx==1)
+        qLx,qRx = weno5(nx,ny,nz,q,1)
+    elseif (iflx==2)
+        qLx,qRx = upwind5(nx,ny,nz,q,1)
+    end
     FLx = flux(nx,ny,nz,qLx,1)
     FRx = flux(nx,ny,nz,qRx,1)
     Fx  = rusanov_3d(q,qLx,FLx,qRx,FRx,nx,ny,nz,1)
 
     #y-direction
-    qLy,qRy = weno5(nx,ny,nz,q,2)
+    if (iflx==1)
+        qLy,qRy = weno5(nx,ny,nz,q,2)
+    elseif (iflx==2)
+        qLy,qRy = upwind5(nx,ny,nz,q,2)
+    end
     FLy = flux(nx,ny,nz,qLy,2)
     FRy = flux(nx,ny,nz,qRy,2)
     Fy  = rusanov_3d(q,qLy,FLy,qRy,FRy,nx,ny,nz,2)
 
     #z-direction
-    qLz,qRz = weno5(nx,ny,nz,q,3)
+    if (iflx==1)
+        qLz,qRz = weno5(nx,ny,nz,q,3)
+    elseif (iflx==2)
+        qLz,qRz = upwind5(nx,ny,nz,q,3)
+    end
     FLz = flux(nx,ny,nz,qLz,3)
     FRz = flux(nx,ny,nz,qRz,3)
     Fz  = rusanov_3d(q,qLz,FLz,qRz,FRz,nz,ny,nz,3)
-
 
     for i in 0:nx
         r[:,i,:,:] = -(Fx[:,i,:,:]-Fx[:,i-1,:,:])./dx
@@ -842,8 +941,8 @@ function calc_coeff_cd(u,g,a,b,c,d1,d2,d3,nx,ny,nz,axis,flxdir)
 end
 
 #RHS
-function rhs(nx,ny,nz,dx,dy,dz,q,ivis,Re)
-    ri = rhsInv(nx,ny,nz,dx,dy,dz,q)
+function rhs(nx,ny,nz,dx,dy,dz,q,ivis,iflx,Re)
+    ri = rhsInv(nx,ny,nz,dx,dy,dz,q,iflx)
     if (ivis==1)
         rv = rhsVis(nx,ny,nz,dx,dy,dz,q,Re)
         r  = ri + rv
@@ -855,23 +954,23 @@ function rhs(nx,ny,nz,dx,dy,dz,q,ivis,Re)
 end
 
 #Time stepping RK3
-function tvdrk3(nx,ny,nz,dx,dy,dz,q,dt,ivis,Re)
+function tvdrk3(nx,ny,nz,dx,dy,dz,q,dt,ivis,iflx,Re)
     qq = copy(q)
     qn = copy(q)
 
     #First step
     expbc!(q,nx,ny,nz)
-    r  = rhs(nx,ny,nz,dx,dy,dz,q,ivis,Re)
+    r  = rhs(nx,ny,nz,dx,dy,dz,q,ivis,iflx,Re)
     qq = q + dt*r
 
     #Second step
     expbc!(qq,nx,ny,nz)
-    r  = rhs(nx,ny,nz,dx,dy,dz,qq,ivis,Re)
+    r  = rhs(nx,ny,nz,dx,dy,dz,qq,ivis,iflx,Re)
     qq = 0.75*q + 0.25*qq + 0.25*dt*r
 
     #Third Step
     expbc!(qq,nx,ny,nz)
-    r  = rhs(nx,ny,nz,dx,dy,dz,qq,ivis,Re)
+    r  = rhs(nx,ny,nz,dx,dy,dz,qq,ivis,iflx,Re)
     qn = 1/3*q + 2/3*qq + 2/3*dt*r
 
     return qn
@@ -890,7 +989,7 @@ end
 
 
 #Create a function for the ns3d run
-function ns3d(cfl=0.5,nx=16,ny=16,nz=16,nitermax=10000,tend=1.0,nout=10,ivis=0,Re=1600)
+function ns3d(cfl=0.5,nx=16,ny=16,nz=16,nitermax=10000,tend=1.0,nout=10,ivis=0,iflx=1,Re=1600)
 
     #Setup required
     γ  = consts.γ
@@ -944,7 +1043,7 @@ function ns3d(cfl=0.5,nx=16,ny=16,nz=16,nitermax=10000,tend=1.0,nout=10,ivis=0,R
         #tke_new = calc_tke(q,nx,ny,nz)
         expbc!(q,nx,ny,nz)
 
-        qnew = tvdrk3(nx,ny,nz,dx,dy,dz,q,dt,ivis,Re)
+        qnew = tvdrk3(nx,ny,nz,dx,dy,dz,q,dt,ivis,iflx,Re)
 
         expbc!(qnew,nx,ny,nz)
 
@@ -1013,8 +1112,10 @@ nplot   = inp_data["nplot"]
 
 #Specific Flags
 ivis = inp_data["ivis"]
+iflx = inp_data["iflx"]
+
 ihpc = inp_data["ihpc"]
-tke,dEdt,tlist = ns3d(cfl,nx,nx,nx,nitermax,tend,nplot,ivis,Re)
+tke,dEdt,tlist = ns3d(cfl,nx,nx,nx,nitermax,tend,nplot,ivis,iflx,Re)
 npzwrite("data.npz", Dict("tkelist" => tke, "dEdt" => -dEdt, "tlist" => tlist))
 
 #%%
