@@ -1,8 +1,8 @@
 #Input File for 3D NS
 nitermax: 100000000000
-nx   : 16
-ny   : 16
-nz   : 16
+nx   : 32
+ny   : 32
+nz   : 32
 cfl  : 0.5
 Re   : 1600.0
 nplot: 10
